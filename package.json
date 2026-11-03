@@ -1,0 +1,10 @@
+{
+  "name": "herdr-ui",
+  "private": true,
+  "type": "module",
+  "description": "Herdr mods: editable Files panel, drag paths into terminals, GitHub issues/PR panel",
+  "scripts": {
+    "test": "node --test tests/my-files-logic.test.mjs tests/my-github-logic.test.mjs"
+  },
+  "license": "Apache-2.0"
+}

@@ -1,0 +1,4 @@
+node_modules/
+gpui-kit.d.ts
+jsconfig.json
+*.bak*

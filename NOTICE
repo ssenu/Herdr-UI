@@ -1,0 +1,14 @@
+Herdr-UI
+Copyright 2026 ssenu
+
+This product includes software derived from Herdr (https://github.com/herdrdev/herdr),
+licensed under the Apache License, Version 2.0:
+
+- mods/my-files: modified copy of Herdr's built-in "files" mod (version 0.1.12).
+  Added: in-panel editing and saving, unsaved-buffer tracking, disk-change and
+  conflict handling, CRLF-preserving saves, markdown preview, nano button, and
+  drag-a-row-to-terminal path pasting.
+- mods/my-tabs: modified copy of Herdr's built-in "tabs" mod (version 0.1.12).
+  Added: a GitHub panel button.
+
+All other files are original work, licensed under the Apache License 2.0.
