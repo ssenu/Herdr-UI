@@ -86,6 +86,8 @@ const wordStart = (path, i) => i === 0 || "/.-_ ".includes(path[i - 1]) || (/[a-
 // changes the length (e.g. "İ" -> "i" + combining dot), use its first code point if that keeps the
 // length, otherwise keep the original character.
 function lowerAligned(s) {
+  const fast = s.toLowerCase();
+  if (fast.length === s.length) return fast;
   let out = "";
   for (const ch of s) {
     const l = ch.toLowerCase();
