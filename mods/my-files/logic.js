@@ -192,7 +192,7 @@ export function indexCommand(root, windows) {
     ].join("; ");
     return { command: "powershell", args: ["-NoProfile", "-Command", script] };
   }
-  const script = `cd "$1" || exit 1; find . -name .git -prune -o -type f -print | head -n ${INDEX_LIMIT + 1}`;
+  const script = `cd -- "$1" || exit 1; find . -name .git -prune -o -type f -print | head -n ${INDEX_LIMIT + 1}`;
   return { command: "sh", args: ["-c", script, "index", root] };
 }
 
