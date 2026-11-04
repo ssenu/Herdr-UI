@@ -158,7 +158,8 @@ export function servers(map) {
 /** Claude Code's ~/.claude.json: user servers, and the local servers stored for this folder (or its repository). */
 export function claudeMcp(obj, cwd, repo) {
   const projects = isObject(obj?.projects) ? Object.entries(obj.projects) : [];
-  const entry = (projects.find(([p]) => samePath(p, cwd)) ?? projects.find(([p]) => samePath(p, repo)))?.[1];
+  const own = projects.find(([p]) => samePath(p, cwd))?.[1];
+  const entry = servers(own?.mcpServers).length ? own : projects.find(([p]) => samePath(p, repo))?.[1];
   return { global: servers(obj?.mcpServers), local: servers(entry?.mcpServers) };
 }
 
@@ -284,10 +285,13 @@ class Toml {
   }
 }
 
+const UNSAFE_KEYS = new Set(["__proto__", "constructor", "prototype"]);
+
 function ensure(root, path) {
   let cur = root;
   for (const k of path) {
-    if (cur[k] === undefined) cur[k] = {};
+    if (UNSAFE_KEYS.has(k)) throw new Error("허용하지 않는 키");
+    if (!Object.hasOwn(cur, k)) cur[k] = {};
     if (!isObject(cur[k])) throw new Error("이미 값이 있는 키");
     cur = cur[k];
   }
@@ -295,7 +299,9 @@ function ensure(root, path) {
 }
 
 function setPath(obj, path, value) {
-  ensure(obj, path.slice(0, -1))[path[path.length - 1]] = value;
+  const last = path[path.length - 1];
+  if (UNSAFE_KEYS.has(last)) throw new Error("허용하지 않는 키");
+  ensure(obj, path.slice(0, -1))[last] = value;
 }
 
 /**
@@ -331,8 +337,12 @@ export function parseToml(text) {
       p.endOfLine();
       if (table) setPath(table, path, value);
     } catch (e) {
-      if (at) errors.push({ path: at, message: e.message });
-      if (header) { table = null; at = null; }
+      if (header) {
+        const m = /^\[\s*mcp_servers\s*\.\s*(?:"([^"]*)"|'([^']*)'|([A-Za-z0-9_-]+))/.exec(p.s.slice(start));
+        const name = m && (m[1] ?? m[2] ?? m[3]);
+        errors.push({ path: name !== undefined && !UNSAFE_KEYS.has(name) ? ["mcp_servers", name] : [], message: e.message });
+        table = null; at = null;
+      } else if (at) errors.push({ path: at, message: e.message });
       p.i = start;
       p.skipLine();
     }
@@ -358,12 +368,17 @@ const SECRET_MAPS = new Set(["env", "headers", "http_headers", "env_http_headers
 const SECRET = /token|secret|key|password|auth/i;
 const FLAG = /^--?[\w.-]*(?:token|secret|key|password|auth)[\w.-]*$/i;
 const FLAG_VALUE = /^(--?[\w.-]*(?:token|secret|key|password|auth)[\w.-]*=).*$/i;
+const USERINFO = /\/\/[^/@\s]*@/;
+const ENV_ARG = /^([A-Za-z_][\w.-]*)=/;
 const QUERY = /([?&][^=&#]*(?:token|secret|key|password|auth)[^=&#]*=)[^&#]*/gi;
 
 function redactArgs(args) {
   return args.map((a, i) => {
     if (typeof a !== "string") return a;
     if (i > 0 && typeof args[i - 1] === "string" && FLAG.test(args[i - 1])) return MASK;
+    if (/^authorization:/i.test(a)) return `Authorization: ${MASK}`;
+    const e = ENV_ARG.exec(a);
+    if (e && SECRET.test(e[1])) return `${e[1]}=${MASK}`;
     return a.replace(FLAG_VALUE, `$1${MASK}`);
   });
 }
@@ -374,10 +389,10 @@ export function redact(v) {
   if (!isObject(v)) return v;
   const out = {};
   for (const [k, x] of Object.entries(v)) {
-    if (SECRET_MAPS.has(k) && isObject(x)) out[k] = Object.fromEntries(Object.keys(x).map(n => [n, MASK]));
+    if (SECRET_MAPS.has(k)) out[k] = isObject(x) ? Object.fromEntries(Object.keys(x).map(n => [n, MASK])) : MASK;
     else if (k === "args" && Array.isArray(x)) out[k] = redactArgs(x);
-    else if (k === "url" && typeof x === "string") out[k] = x.replace(QUERY, `$1${MASK}`);
-    else if (typeof x === "string" && SECRET.test(k)) out[k] = MASK;
+    else if (k === "url" && typeof x === "string") out[k] = x.replace(USERINFO, `//${MASK}@`).replace(QUERY, `$1${MASK}`);
+    else if (SECRET.test(k) && k !== "args" && k !== "url") out[k] = MASK;
     else out[k] = redact(x);
   }
   return out;
@@ -394,9 +409,10 @@ export function serverSummary(config) {
 
 const show = x => (typeof x === "string" ? (/\s/.test(x) ? JSON.stringify(x) : x) : JSON.stringify(x));
 
-/** key: value lines for the detail view; nested tables one level deeper. Pass a redacted config. */
+/** key: value lines for the detail view; nested tables one level deeper. Redacts its input. */
 export function configLines(v, depth = 0) {
   const out = [];
+  if (depth === 0) v = redact(v);
   for (const [k, x] of Object.entries(isObject(v) ? v : {})) {
     if (isObject(x)) { out.push({ depth, text: `${k}:` }); out.push(...configLines(x, depth + 1)); }
     else if (Array.isArray(x)) out.push({ depth, text: `${k}: ${x.map(show).join(" ")}` });

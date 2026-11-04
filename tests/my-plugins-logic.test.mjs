@@ -222,7 +222,47 @@ test("configLines: nested values as indented lines", () => {
     { depth: 0, text: "command: npx" },
     { depth: 0, text: "args: -y \"a b\"" },
     { depth: 0, text: "env:" },
-    { depth: 1, text: "K: v" },
+    { depth: 1, text: "K: ••••" },
     { depth: 0, text: "enabled: false" },
   ]);
+});
+
+test("parseToml: __proto__ / constructor / prototype keys are rejected", () => {
+  const { errors } = L.parseToml("[__proto__.polluted]\nx = 1\n");
+  assert.equal(Object.prototype.polluted, undefined);
+  assert.equal(({}).polluted, undefined);
+  assert.equal(errors.length, 1);
+  const r = L.codexMcp("[mcp_servers.a]\n__proto__ = 1\n");
+  assert.equal(r[0].name, "a");
+  assert.notEqual(r[0].error, null);
+  const inl = L.parseToml("[mcp_servers.a]\nenv = { __proto__ = { z = 1 } }\n");
+  assert.equal(({}).z, undefined);
+  assert.equal(inl.errors.length, 1);
+});
+
+test("codexMcp: a malformed header is blamed on its own server", () => {
+  assert.deepEqual(L.codexMcp("[mcp_servers.a]\ncommand='x'\n[mcp_servers.b\ncommand='y'\n").map(s => [s.name, s.enabled, s.error !== null]),
+    [["a", true, false], ["b", true, true]]);
+});
+
+test("redact: more secret shapes", () => {
+  assert.deepEqual(L.redact({ auth: { value: "abc" } }), { auth: "••••" });
+  assert.deepEqual(L.redact({ token: ["a"] }), { token: "••••" });
+  assert.deepEqual(L.redact({ password: 123 }), { password: "••••" });
+  assert.deepEqual(L.redact({ env: ["K=v"] }), { env: "••••" });
+  assert.deepEqual(L.redact({ headers: "x" }), { headers: "••••" });
+  assert.deepEqual(L.redact({ url: "https://u:p@h/x?token=1" }), { url: "https://••••@h/x?token=••••" });
+  assert.deepEqual(L.redact({ args: ["-e", "API_KEY=abc", "--header", "Authorization: Bearer x"] }),
+    { args: ["-e", "API_KEY=••••", "--header", "Authorization: ••••"] });
+});
+
+test("configLines redacts its input", () => {
+  assert.deepEqual(L.configLines({ env: { K: "v" }, token: "t" }), [
+    { depth: 0, text: "env:" }, { depth: 1, text: "K: ••••" }, { depth: 0, text: "token: ••••" },
+  ]);
+});
+
+test("claudeMcp: an empty cwd entry falls back to the repository entry", () => {
+  const obj = { projects: { "/a/b": { mcpServers: {} }, "/a": { mcpServers: { s: {} } } } };
+  assert.deepEqual(L.claudeMcp(obj, "/a/b", "/a").local.map(s => s.name), ["s"]);
 });
