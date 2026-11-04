@@ -25,6 +25,8 @@ test("ancestors: cwd up to the repository root", () => {
 
 test("psQuote", () => {
   assert.equal(L.psQuote("it's"), "'it''s'");
+  assert.equal(L.psQuote("it’s"), "'it’’s'");
+  assert.equal(L.psQuote("‘a‚b‛c"), "'‘‘a‚‚b‛‛c'");
 });
 
 test("listingCommand: sh gets the folders as arguments", () => {
@@ -52,9 +54,11 @@ test("listingLines", () => {
 // The real scripts, on a folder whose name needs quoting.
 function fixture() {
   const root = mkdtempSync(pjoin(tmpdir(), "plugins-"));
-  const d = pjoin(root, "a&b it's 스킬");
+  const d = pjoin(root, "a&b it's it’s 스킬");
   mkdirSync(pjoin(d, "one"), { recursive: true });
   writeFileSync(pjoin(d, "one", "SKILL.md"), "---\nname: one\n---\n");
+  mkdirSync(pjoin(d, ".hidden"));
+  writeFileSync(pjoin(d, ".hidden", "SKILL.md"), "---\nname: hidden\n---\n");
   mkdirSync(pjoin(d, "no-skill-md"));
   return d;
 }
@@ -68,7 +72,7 @@ for (const windows of [true, false]) {
     assert.equal(r.status, 0, r.stderr);
     const out = L.listingLines(r.stdout);
     assert.ok(out.home);
-    assert.deepEqual(out.dirs.get(d), ["one"]);
+    assert.deepEqual([...out.dirs.get(d)].sort(), [".hidden", "one"]);
     assert.equal(out.dirs.get(missing), undefined);
   });
 }

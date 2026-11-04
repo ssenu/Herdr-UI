@@ -1,8 +1,8 @@
 // Pure helpers for my-plugins. No herdr or gpui imports, so `node --test` can load this file.
 
-/** A PowerShell single-quoted string literal (only ' is special inside). */
+/** A PowerShell single-quoted string literal. PowerShell also reads the typographic single quotes as quotes, so double those too. */
 export function psQuote(s) {
-  return "'" + String(s).replaceAll("'", "''") + "'";
+  return "'" + String(s).replace(/['‘’‚‛]/g, m => m + m) + "'";
 }
 
 /** Joins path pieces with "/" (Windows accepts it); the first piece keeps its own separators. */
@@ -62,7 +62,7 @@ export function listingCommand(dirs, windows) {
         "ForEach-Object { \"DIR`t$d`t$($_.Name)\" } } }"],
     };
   }
-  const script = "printf 'HOME\\t%s\\n' \"$HOME\"; for d in \"$@\"; do for p in \"$d\"/*/SKILL.md; do " +
+  const script = "printf 'HOME\\t%s\\n' \"$HOME\"; for d in \"$@\"; do for p in \"$d\"/*/SKILL.md \"$d\"/.[!.]*/SKILL.md; do " +
     "[ -f \"$p\" ] || continue; n=${p%/SKILL.md}; printf 'DIR\\t%s\\t%s\\n' \"$d\" \"${n##*/}\"; done; done";
   return { command: "sh", args: ["-c", script, "plugins", ...dirs] };
 }
