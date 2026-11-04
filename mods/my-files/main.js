@@ -3,12 +3,13 @@
 //    survive switching files and spaces (in memory only), and disk changes reload clean buffers or
 //    flag a conflict on dirty ones;
 //  - dragging a row out of the panel opens mods/my-files-drag, which types the row's absolute path
-//    into the focused terminal on release.
+//    into the focused terminal on release;
+//  - a search box above the tree finds files by name (fuzzy) anywhere under the root (.git skipped);
 // Remote and truncated files stay read-only, with a button to open them in nano beside.
 import { View, div, svg } from "gpui-kit";
-import { v_flex, h_flex, Editor, EditorState, TextView } from "gpui-base";
+import { v_flex, h_flex, Editor, EditorState, TextView, InputState, Input } from "gpui-base";
 import { spaces, panes, focused, exec, readTextFile, writeTextFile, watchFolder, theme, settings, window, openOverlay, run, notify } from "herdr";
-import { absolutePath, quoteForPrompt, editability, previewText, sameText, isSaveKey, restoreEol, syncDecision, saveFailure, REASONS, isMarkdown } from "./logic.js";
+import { absolutePath, quoteForPrompt, editability, previewText, sameText, isSaveKey, restoreEol, syncDecision, saveFailure, REASONS, isMarkdown, searchPaths, splitPath, segments, indexCommand, indexLines } from "./logic.js";
 
 // A folder the panel shows instead of following the focused pane (the 바탕화면 button); null follows.
 let pinned = null;
@@ -23,6 +24,7 @@ function location() {
 const key = () => JSON.stringify(location());
 const LANG = { ts: "js", tsx: "js", mts: "js", cts: "js", jsx: "js", mjs: "js", toml: "yaml", jsonc: "json", svelte: "html", vue: "html" };
 const PER_FOLDER = 500, TOTAL = 5000;
+const RESULT_LIMIT = 200, REMOTE_INDEX_MS = 60000;
 const GONE = "This file is no longer available";
 const UNREADABLE = "Cannot preview this file (binary, too large, or unreadable)";
 
@@ -46,6 +48,11 @@ async function directory(path, on) {
 export default class Files extends View {
   init(_props, cx) {
     this.saved = new Map(); this.buffers = new Map();
+    // File search: the query, the selected result, and per-folder indexes (context key → index).
+    this.query = ""; this.at = 0; this.indexes = new Map(); this.found = null;
+    this.search = InputState.new({ placeholder: "이 폴더에서 파일 찾기" });
+    this.search.on("change", (_e, cx) => { this.query = this.search.value(); this.at = 0; this.ensureIndex(cx); cx.notify(); });
+    this.search.on("submit", (_e, cx) => { this.openResult(cx); cx.notify(); });
     this.entries = new Map(); this.folders = new Set(); this.pending = new Set(); this.marks = {};
     this.refresh(cx);
     cx.timer.every(10000, cx => this.refresh(cx));
@@ -75,7 +82,14 @@ export default class Files extends View {
     this.watched = root;
     const context = this.context;
     cx.spawn(async cx => {
-      try { while (this.context === context) { await watchFolder(root); if (this.current(context)) this.refresh(cx); } }
+      try {
+        while (this.context === context) {
+          await watchFolder(root);
+          const index = this.indexes.get(context.key);
+          if (index) index.stale = true;
+          if (this.current(context)) this.refresh(cx);
+        }
+      }
       catch { if (this.context === context) this.watched = null; }
     });
   }
@@ -305,6 +319,66 @@ export default class Files extends View {
     catch (e) { notify({ title: "nano를 열지 못했어요", body: String(e), level: "error", timeout: 5000 }); }
   }
 
+  // Builds (or rebuilds, when stale) the file list the search filters. Old results stay meanwhile.
+  ensureIndex(cx) {
+    const context = this.context;
+    if (!this.query.trim() || !context?.cwd) return;
+    const old = this.indexes.get(context.key);
+    const outdated = !old || old.stale || Boolean(old.error) || (Boolean(context.on) && Date.now() - old.builtAt > REMOTE_INDEX_MS);
+    if (old?.building || !outdated) return;
+    const index = { paths: old?.paths ?? null, truncated: old?.truncated ?? false, builtAt: 0, stale: false, building: true, error: null };
+    this.indexes.set(context.key, index);
+    const windows = !context.on && window()?.platform === "windows";
+    cx.spawn(async cx => {
+      try {
+        const c = indexCommand(context.cwd, windows);
+        const r = await exec(c.command, c.args, { on: context.on });
+        if (r.code !== 0) throw new Error((r.stderr || "").trim() || `exit ${r.code}`);
+        const { paths, truncated } = indexLines(r.stdout, windows);
+        index.paths = paths; index.truncated = truncated;
+      } catch (e) {
+        index.error = String(e?.message ?? e);
+      } finally {
+        index.building = false; index.builtAt = Date.now();
+        cx.notify();
+      }
+    });
+  }
+
+  index() {
+    return this.context ? this.indexes.get(this.context.key) ?? null : null;
+  }
+
+  // Search results for the current query, cached per (query, index paths).
+  results() {
+    const q = this.query.trim(), paths = this.index()?.paths;
+    if (!q || !paths) return null;
+    if (this.found?.q !== q || this.found.paths !== paths) this.found = { q, paths, value: searchPaths(paths, q, RESULT_LIMIT) };
+    return this.found.value;
+  }
+
+  openResult(cx) {
+    const r = this.results()?.results[this.at];
+    if (r) this.show(r.path, cx);
+  }
+
+  clearSearch() {
+    this.search.set_value("");
+    this.query = ""; this.at = 0;
+  }
+
+  // Open with…: stops the press and click so the row neither drags, opens nor toggles.
+  openButton(path, dir, t) {
+    return div().id(`open-${path}`).w(20).h(20).flex_none().flex().items_center().justify_center().rounded(5)
+      .text_color(t.dim).hover(s => s.bg(t.selected).text_color(t.foreground))
+      .on_mouse_down("left", (_e, cx) => cx.stop_propagation())
+      .on_click((_e, cx) => {
+        cx.stop_propagation();
+        openOverlay({ mod: "my-files-open", kind: "popup", width: 200, height: 136, props: { path: this.absolute(path), dir } });
+      })
+      .child("⋯");
+  }
+
   rows(prefix, depth, out, t) {
     if (out.length >= TOTAL || depth > 40) return out;
     for (const entry of this.entries.get(prefix) ?? []) {
@@ -319,18 +393,58 @@ export default class Files extends View {
         .child(div().flex_1().min_w(0).truncate().child(entry.name))
         .when(Boolean(dirty), el => el.child(div().text_size(11).text_color(t.accent).child("●")))
         .when(Boolean(mark), el => el.child(div().text_size(11).text_color(mark === "A" ? t.ansi2 : mark === "D" || mark === "U" ? t.ansi1 : t.blocked).child(mark)))
-        // Open with…: stops the press and click so the row neither drags, opens nor toggles.
-        .when(!this.on, el => el.child(div().id(`open-${path}`).w(20).h(20).flex_none().flex().items_center().justify_center().rounded(5)
-          .text_color(t.dim).hover(s => s.bg(t.selected).text_color(t.foreground))
-          .on_mouse_down("left", (_e, cx) => cx.stop_propagation())
-          .on_click((_e, cx) => {
-            cx.stop_propagation();
-            openOverlay({ mod: "my-files-open", kind: "popup", width: 200, height: 136, props: { path: this.absolute(path), dir: entry.dir } });
-          })
-          .child("⋯"))));
+        .when(!this.on, el => el.child(this.openButton(path, entry.dir, t))));
       if (entry.dir && open) this.rows(path, depth + 1, out, t);
     }
     return out;
+  }
+
+  resultRow(r, i, t) {
+    const path = r.path, { dir, name } = splitPath(path), start = path.length - name.length;
+    const mark = this.marks[`${this.root}/${path}`], dirty = this.buffers.get(path)?.dirty;
+    const nameHits = r.hits.filter(h => h >= start).map(h => h - start);
+    return h_flex().id(`found-${path}`).h(28).flex_none().px(8).gap(7).items_center().rounded(7).cursor_pointer()
+      .when(i === this.at, el => el.bg(t.selected))
+      .hover(s => s.bg(t.hover))
+      .on_mouse_down("left", () => { this.drag = { text: quoteForPrompt(this.absolute(path)), name, dir: false }; })
+      .on_click((_e, cx) => { this.at = i; this.show(path, cx); cx.notify(); })
+      .child(svg("mods/my-files/file.svg").size(14).flex_none().text_color(t.muted))
+      .child(h_flex().flex_none().overflow_hidden()
+        .children(segments(name, nameHits).map(s => div().when(s.hit, el => el.text_color(t.accent).font_semibold()).child(s.text))))
+      .child(div().flex_1().min_w(0).truncate().text_size(11).text_color(t.dim).child(dir))
+      .when(Boolean(dirty), el => el.child(div().text_size(11).text_color(t.accent).child("●")))
+      .when(Boolean(mark), el => el.child(div().text_size(11).text_color(mark === "A" ? t.ansi2 : mark === "D" || mark === "U" ? t.ansi1 : t.blocked).child(mark)))
+      .when(!this.on, el => el.child(this.openButton(path, false, t)));
+  }
+
+  searchBar(t) {
+    const index = this.index();
+    return h_flex().h(36).flex_none().px(10).gap(8).items_center().border_b(1).border_color(t.border)
+      .on_key_down((e, cx) => {
+        const n = this.results()?.results.length ?? 0;
+        if (e.key === "down" && n) this.at = Math.min(this.at + 1, n - 1);
+        else if (e.key === "up" && n) this.at = Math.max(this.at - 1, 0);
+        else if (e.key === "escape" && this.query) this.clearSearch();
+        else return;
+        cx.stop_propagation();
+        cx.notify();
+      })
+      .child(div().flex_none().text_color(t.dim).child("🔍"))
+      .child(Input.new(this.search).flex_1().h_full().text_size(12.5).text_color(t.foreground))
+      .when(Boolean(index?.building), el => el.child(div().flex_none().text_size(11).text_color(t.dim).child("목록 만드는 중…")));
+  }
+
+  foundView(t) {
+    const index = this.index(), found = this.results(), q = this.query.trim();
+    const note = text => div().p(8).text_size(12).text_color(t.dim).child(text);
+    if (found && this.at >= found.results.length) this.at = Math.max(0, found.results.length - 1);
+    return v_flex().id("files-found").flex_1().min_h(0).overflow_y_scrollbar().p(6)
+      .when(Boolean(index?.error), el => el.child(div().p(8).text_size(12).text_color(t.ansi1).child(`파일 목록을 만들지 못했어요: ${index.error}`)))
+      .when(Boolean(index?.truncated), el => el.child(note("파일이 너무 많아 처음 50,000개에서만 찾아요")))
+      .children(found ? found.results.map((r, i) => this.resultRow(r, i, t)) : [])
+      .when(Boolean(found?.more), el => el.child(note("더 있어요 · 검색어를 더 입력하세요")))
+      .when(Boolean(found) && found.results.length === 0, el => el.child(note(`‘${q}’와 맞는 파일이 없어요`)))
+      .when(!found && !index?.error, el => el.child(note("목록 만드는 중…")));
   }
 
   render(cx) {
@@ -367,7 +481,9 @@ export default class Files extends View {
         .child(div().flex_1())
         .child(chip("files-view-preview", "보기", buf.view === "preview", () => { buf.view = "preview"; }))
         .child(chip("files-view-edit", "편집", buf.view === "edit", () => { buf.view = "edit"; }))))
-      .when(!file, el => el.child(v_flex().id("files-tree").flex_1().min_h(0).overflow_y_scrollbar().p(6).children(this.rows("", 0, [], t))
+      .when(!file, el => el.child(this.searchBar(t)))
+      .when(!file && Boolean(this.query.trim()), el => el.child(this.foundView(t)))
+      .when(!file && !this.query.trim(), el => el.child(v_flex().id("files-tree").flex_1().min_h(0).overflow_y_scrollbar().p(6).children(this.rows("", 0, [], t))
         .when(Boolean(this.error) || !this.entries.get("")?.length, el => el.child(div().p(8).text_size(12).text_color(t.dim).child(this.error || (this.loading ? "Loading files…" : this.root ? "No files" : "No folder"))))
         .when(this.limited, el => el.child(div().p(8).text_size(11).text_color(t.dim).child("File list limited to 500 entries per folder and 5,000 total")))))
       .when(Boolean(file), el => el.child(!buf
