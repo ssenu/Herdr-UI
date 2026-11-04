@@ -87,7 +87,12 @@ Write-Host "레이아웃 '$Layout' 에 연결했어요 (백업: $Layout.json.bak
 
 if (Get-Command herdr-app -ErrorAction SilentlyContinue) {
   $shared = Join-Path $app "shared.json"
-  $current = if (Test-Path $shared) { ([IO.File]::ReadAllText($shared) | ConvertFrom-Json).layout } else { $null }
+  $current = $null
+  if (Test-Path $shared) {
+    $text = [IO.File]::ReadAllText($shared)
+    try { $current = ($text | ConvertFrom-Json).layout }
+    catch { if ($text -match '"layout"\s*:\s*"([^"]*)"') { $current = $Matches[1] } }
+  }
   if ($current -ne $Layout) {
     $json = '{"name":"' + $Layout + '"}'
     & herdr-app do layout.switch $json | Out-Null
