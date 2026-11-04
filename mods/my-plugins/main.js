@@ -74,7 +74,7 @@ async function collect({ cwd, on }, agent) {
       for (const s of global) mcp.push({ ...s, kind: "mcp", source: "전역", file: userFile });
       for (const s of local) mcp.push({ ...s, kind: "mcp", source: "로컬", file: userFile });
     }
-    if (project && !samePath(projectFile, userFile)) {
+    if (project) {
       for (const s of servers(project.mcpServers)) mcp.push({ ...s, kind: "mcp", source: "프로젝트", file: projectFile });
     }
     addDir(join(home, ".claude", "skills"), "전역");
@@ -106,7 +106,7 @@ export default class Plugins extends View {
   init(_props, cx) {
     this.tab = "mcp"; this.pick = null; // pick: { address, agent } chosen with the chips
     this.data = null; this.error = null; this.loading = false; this.again = false;
-    this.detail = null; this.context = null; this.wasShown = false;
+    this.detail = null; this.context = null; this.wasShown = this.visible();
     if (this.visible()) this.refresh(cx);
   }
 
@@ -121,6 +121,7 @@ export default class Plugins extends View {
   agent() {
     const f = focusedAgent();
     if (this.pick && this.pick.address === f.address) return this.pick.agent;
+    if (this.pick) this.pick = null;
     return agentKind(f.name);
   }
 
@@ -198,7 +199,7 @@ export default class Plugins extends View {
     const c = this.context, agent = c?.agent ?? this.agent();
     const items = this.data ? (this.tab === "mcp" ? this.data.mcp : this.data.skills) : [];
     const problems = (this.data?.problems ?? []).filter(p => p.tab === this.tab);
-    const message = !c?.cwd ? "폴더가 없어요" : this.error ? this.error : !this.data ? "불러오는 중…" : emptyText(this.tab);
+    const message = !c?.cwd ? "폴더가 없어요" : !this.data ? (this.error || "불러오는 중…") : emptyText(this.tab);
     const where = c?.cwd ? (c.on ? `${c.on}:${base(c.cwd)}` : base(c.cwd)) : "";
     return [
       h_flex().h(42).flex_none().px(14).gap(6).items_center().border_b(1).border_color(t.border)
@@ -214,7 +215,7 @@ export default class Plugins extends View {
         .child(div().flex_1().min_w(0).truncate().text_right().text_size(12).text_color(t.dim).child(where)),
       v_flex().id("plugins-list").flex_1().min_h(0).overflow_y_scrollbar().p(6)
         .when(Boolean(this.error && this.data), el => el.child(div().px(8).py(4).text_size(12).text_color(t.ansi1).child(`⚠ ${this.error}`)))
-        .children(problems.map(p => div().px(8).py(4).text_size(12).text_color(t.ansi1).child(`⚠ 읽지 못했어요: ${p.file}`)))
+        .children(problems.map(p => div().px(8).py(4).text_size(12).text_color(t.ansi1).child(`⚠ ${base(p.file)}을 읽지 못했어요`)))
         .children(groupBySource(items).flatMap(g => [
           div().px(8).pt(8).pb(2).text_size(11).text_color(t.muted).child(g.source),
           ...g.items.map(item => this.row(item, t, badge)),
@@ -230,15 +231,15 @@ export default class Plugins extends View {
     const body = d.kind === "skill"
       ? content
         .when(Boolean(d.description), el => el.child(div().text_size(12).text_color(t.muted).child(d.description)))
-        .child(d.body.trim() ? TextView.markdown(`pl-md-${d.source}-${d.name}`, d.body).selectable(true) : div().text_color(t.dim).child("본문 없음"))
+        .child(d.body.trim() ? TextView.markdown(`pl-md-${d.file}`, d.body).selectable(true) : div().text_color(t.dim).child("본문 없음"))
       : content
         .when(d.enabled === false, el => el.child(h_flex().child(badge("꺼짐", t.dim))))
         .when(Boolean(d.error), el => el.child(div().text_size(12).text_color(t.ansi1).child(`읽지 못함: ${d.error}`)))
         .children(configLines(d.config).map(line => div().pl(line.depth * 14).text_size(12).child(line.text)));
     return [
       h_flex().h(42).flex_none().px(14).gap(8).items_center().border_b(1).border_color(t.border)
-        .child(div().id("plugins-back").w(20).cursor_pointer().text_color(t.muted)
-          .on_click((_e, cx) => { this.detail = null; cx.notify(); }).child("←"))
+        .child(div().id("plugins-back").flex_none().cursor_pointer().text_color(t.muted)
+          .on_click((_e, cx) => { this.detail = null; cx.notify(); }).child("← 목록"))
         .child(div().flex_1().min_w(0).truncate().font_semibold().child(d.name)),
       body,
     ];
