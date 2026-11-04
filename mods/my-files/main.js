@@ -318,7 +318,16 @@ export default class Files extends View {
         .child(svg(`mods/my-files/${entry.dir ? "folder" : "file"}.svg`).size(14).flex_none().text_color(t.muted))
         .child(div().flex_1().min_w(0).truncate().child(entry.name))
         .when(Boolean(dirty), el => el.child(div().text_size(11).text_color(t.accent).child("●")))
-        .when(Boolean(mark), el => el.child(div().text_size(11).text_color(mark === "A" ? t.ansi2 : mark === "D" || mark === "U" ? t.ansi1 : t.blocked).child(mark))));
+        .when(Boolean(mark), el => el.child(div().text_size(11).text_color(mark === "A" ? t.ansi2 : mark === "D" || mark === "U" ? t.ansi1 : t.blocked).child(mark)))
+        // Open with…: stops the press and click so the row neither drags, opens nor toggles.
+        .when(!this.on, el => el.child(div().id(`open-${path}`).w(20).h(20).flex_none().flex().items_center().justify_center().rounded(5)
+          .text_color(t.dim).hover(s => s.bg(t.selected).text_color(t.foreground))
+          .on_mouse_down("left", (_e, cx) => cx.stop_propagation())
+          .on_click((_e, cx) => {
+            cx.stop_propagation();
+            openOverlay({ mod: "my-files-open", kind: "popup", width: 200, height: 136, props: { path: this.absolute(path), dir: entry.dir } });
+          })
+          .child("⋯"))));
       if (entry.dir && open) this.rows(path, depth + 1, out, t);
     }
     return out;

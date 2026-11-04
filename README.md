@@ -7,6 +7,7 @@
 |---|---|
 | `my-files` | 기본 Files 패널의 복제본. 파일 편집·저장, `.md` 보기 모드, 드래그로 경로 넣기 |
 | `my-files-drag` | 드래그하는 동안 창 전체를 덮는 투명 레이어 (이름표 표시, 놓으면 붙여넣기) |
+| `my-files-open` | 파일 행의 `⋯` 메뉴: 기본 프로그램 / VS Code / 탐색기에서 보기 / 경로 복사 |
 | `my-github` | 현재 저장소의 GitHub 이슈·PR 패널 (gh CLI 사용) |
 | `my-tabs` | 기본 탭 바의 복제본. Files · Changes 옆에 GitHub 버튼 추가 |
 
@@ -20,6 +21,8 @@
   - CRLF 줄바꿈 파일은 CRLF로 저장됩니다.
 - **읽기 전용 + nano**: 원격 스페이스(ssh 머신)의 파일과 400,000자가 넘는 파일은 읽기 전용입니다. **[nano로 열기]** 를 누르면 오른쪽에 칸을 나눠 nano로 엽니다.
 - **`.md` 보기 모드**: `.md` / `.markdown` 파일은 렌더링된 화면으로 먼저 열립니다. 오른쪽 위 **[보기] [편집]** 으로 오갑니다. 편집 중인 내용(저장 전)도 보기에 반영됩니다.
+- **외부 프로그램으로 열기**: 각 행 오른쪽의 **`⋯`** 를 누르면 [기본 프로그램으로 열기] [VS Code로 열기] [탐색기에서 보기] [경로 복사] 메뉴가 뜹니다. 폴더도 됩니다. 원격 스페이스에서는 보이지 않습니다.
+- **[바탕화면]**: 헤더의 칩을 누르면 포커스된 칸 대신 바탕화면 폴더를 보여 줍니다. 다시 누르면 원래대로.
 - **드래그로 경로 넣기**: 파일·폴더를 누른 채 패널 밖으로 끌어 터미널 위에서 놓으면, 마지막으로 선택한 터미널의 프롬프트에 **절대경로**가 입력됩니다(Enter는 누르지 않음). 공백 등이 있으면 `"따옴표"`로 감쌉니다. 패널 위로 돌아와 놓으면 취소.
 
 ### GitHub 패널 (`my-github`)
@@ -40,6 +43,7 @@
 - Herdr 앱 (0.1.12에서 확인). 설치 스크립트는 Windows(PowerShell)용입니다. 다른 OS는 [수동 설치](#수동-설치)를 보세요.
 - GitHub 패널: [GitHub CLI](https://cli.github.com) `gh` 가 설치되고 로그인돼 있어야 합니다(`gh auth login`). 원격 스페이스에서 쓰려면 그 머신에도 gh가 있어야 합니다.
 - [nano로 열기]: 그 머신에 `nano`가 있어야 합니다. Windows에서는 Git for Windows에 들어 있습니다.
+- [VS Code로 열기]: `code` 명령이 PATH에 있어야 합니다(VS Code 설치 시 기본값).
 
 ## 설치 (Windows)
 
@@ -53,7 +57,7 @@ cd Herdr-UI
 
 설치 스크립트가 하는 일:
 
-1. `mods\` 의 네 mod를 `~\.config\herdr-app\mods\` 에 복사합니다.
+1. `mods\` 의 다섯 mod를 `~\.config\herdr-app\mods\` 에 복사합니다.
 2. 레이아웃 `my-layout` 을 고칩니다. 없으면 기본 레이아웃 `main` 을 `my-layout` 으로 복제한 뒤 고칩니다.
    - Files 칸: `files` → `my-files`
    - 탭 바: `tabs` → `my-tabs`
@@ -73,7 +77,7 @@ mod와 레이아웃은 저장하면 바로 적용되므로 앱을 다시 켤 필
 
 ## 수동 설치
 
-1. `mods/` 안의 네 폴더를 `~/.config/herdr-app/mods/` 에 복사합니다.
+1. `mods/` 안의 다섯 폴더를 `~/.config/herdr-app/mods/` 에 복사합니다.
 2. 쓰는 레이아웃(`~/.config/herdr-app/layouts/<이름>.json`, 기본 레이아웃이면 먼저 `herdr-app do layout.clone '{"name":"main","as":"my-layout"}'`)에서:
    - `"mod": "files"` → `"mod": "my-files"`
    - `"mod": "tabs"` → `"mod": "my-tabs"`
@@ -95,7 +99,7 @@ mod는 덮어쓰고, 레이아웃은 이미 연결돼 있으면 그대로 둡니
 ## 제거
 
 1. 백업(`layouts\my-layout.json.bak-<시각>`)을 `my-layout.json` 으로 되돌리거나, 위 세 가지를 원래대로(`files`, `tabs`, github 칸 삭제) 고칩니다.
-2. `~\.config\herdr-app\mods\` 에서 `my-files`, `my-files-drag`, `my-github`, `my-tabs` 폴더를 지웁니다.
+2. `~\.config\herdr-app\mods\` 에서 `my-files`, `my-files-drag`, `my-files-open`, `my-github`, `my-tabs` 폴더를 지웁니다.
 
 ## 알려진 한계
 
