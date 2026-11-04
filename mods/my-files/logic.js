@@ -164,3 +164,47 @@ export function segments(text, hits) {
   }
   return out;
 }
+
+/** How many paths the search index keeps. */
+export const INDEX_LIMIT = 50000;
+
+/** A PowerShell single-quoted literal. PowerShell also reads typographic single quotes as quotes. */
+export function psQuote(s) {
+  return "'" + String(s).replace(/['‘’‚‛]/g, m => m + m) + "'";
+}
+
+/**
+ * One command listing every file under root (relative paths, one per line), skipping .git folders
+ * and not following links or junctions. Stops after INDEX_LIMIT + 1 lines. Fails if root is missing.
+ */
+export function indexCommand(root, windows) {
+  if (windows) {
+    const script = [
+      "[Console]::OutputEncoding = [System.Text.UTF8Encoding]::new($false)",
+      `$root = ${psQuote(root)}`,
+      "if (-not [IO.Directory]::Exists($root)) { [Console]::Error.Write('folder not found'); exit 1 }",
+      `$limit = ${INDEX_LIMIT + 1}; $n = 0`,
+      "$sb = [Text.StringBuilder]::new(); $stack = [Collections.Generic.Stack[string]]::new(); $stack.Push($root)",
+      "while ($stack.Count -gt 0 -and $n -lt $limit) { $d = $stack.Pop(); " +
+        "try { foreach ($f in [IO.Directory]::EnumerateFiles($d)) { [void]$sb.Append($f.Substring($root.Length).TrimStart('\\', '/')).Append(\"`n\"); $n++; if ($n -ge $limit) { break } } } catch {}; " +
+        "try { foreach ($s in [IO.Directory]::EnumerateDirectories($d)) { if ([IO.Path]::GetFileName($s) -ne '.git' -and -not ([IO.File]::GetAttributes($s) -band [IO.FileAttributes]::ReparsePoint)) { $stack.Push($s) } } } catch {} }",
+      "[Console]::Out.Write($sb.ToString())",
+    ].join("; ");
+    return { command: "powershell", args: ["-NoProfile", "-Command", script] };
+  }
+  const script = `cd "$1" || exit 1; find . -name .git -prune -o -type f -print | head -n ${INDEX_LIMIT + 1}`;
+  return { command: "sh", args: ["-c", script, "index", root] };
+}
+
+/** indexCommand's output → relative "/" paths (at most INDEX_LIMIT) and whether it was cut. */
+export function indexLines(stdout, windows) {
+  const paths = [];
+  for (const raw of String(stdout ?? "").split("\n")) {
+    let line = raw.replace(/\r$/, "");
+    if (windows) line = line.replaceAll("\\", "/");
+    line = line.replace(/^\.\//, "");
+    if (line) paths.push(line);
+  }
+  const truncated = paths.length > INDEX_LIMIT;
+  return { paths: truncated ? paths.slice(0, INDEX_LIMIT) : paths, truncated };
+}

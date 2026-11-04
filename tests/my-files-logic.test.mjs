@@ -1,5 +1,9 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { spawnSync } from "node:child_process";
+import { mkdtempSync, mkdirSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join as pjoin } from "node:path";
 // Tests the repository copy of the mod (mods/ next to tests/).
 const L = await import(new URL("../mods/my-files/logic.js", import.meta.url).href);
 
@@ -165,3 +169,54 @@ test("searchPaths: more is false at exactly limit; empty query is empty", () => 
   assert.equal(L.searchPaths(paths, "main", 3).results.length, 3);
   assert.deepEqual(L.searchPaths(paths, null, 5), { results: [], more: false });
 });
+
+test("psQuote doubles straight and typographic single quotes", () => {
+  assert.equal(L.psQuote("it's"), "'it''s'");
+  assert.equal(L.psQuote("it’s ‘a‚b‛"), "'it’’s ‘‘a‚‚b‛‛'");
+});
+
+test("indexCommand: the root goes in as an argument or a quoted literal", () => {
+  const sh = L.indexCommand("/r/it's", false);
+  assert.equal(sh.command, "sh");
+  assert.deepEqual(sh.args.slice(2), ["index", "/r/it's"]);
+  assert.ok(sh.args[1].includes("head -n 50001"));
+  const ps = L.indexCommand("C:\\a&b\\it's", true);
+  assert.equal(ps.command, "powershell");
+  assert.ok(ps.args[2].includes("'C:\\a&b\\it''s'"));
+});
+
+test("indexLines", () => {
+  assert.deepEqual(L.indexLines("./a.txt\n./sub/b.md\n\n", false), { paths: ["a.txt", "sub/b.md"], truncated: false });
+  assert.deepEqual(L.indexLines("a.txt\r\nsub\\b.md\r\n", true), { paths: ["a.txt", "sub/b.md"], truncated: false });
+  assert.deepEqual(L.indexLines("./we\\ird.txt\n", false).paths, ["we\\ird.txt"]); // a backslash is a name character on Unix
+  const many = Array.from({ length: L.INDEX_LIMIT + 1 }, (_, i) => `f${i}`).join("\n");
+  const r = L.indexLines(many, false);
+  assert.equal(r.paths.length, L.INDEX_LIMIT);
+  assert.equal(r.truncated, true);
+});
+
+// The real scripts, on a folder whose name needs quoting.
+function indexFixture() {
+  const root = pjoin(mkdtempSync(pjoin(tmpdir(), "files-index-")), "a&b it's it’s 스킬");
+  mkdirSync(pjoin(root, "sub"), { recursive: true });
+  mkdirSync(pjoin(root, ".git"));
+  mkdirSync(pjoin(root, ".hidden"));
+  writeFileSync(pjoin(root, "top.txt"), "x");
+  writeFileSync(pjoin(root, "sub", "inner.md"), "x");
+  writeFileSync(pjoin(root, ".git", "HEAD"), "x");
+  writeFileSync(pjoin(root, ".hidden", "x.txt"), "x");
+  return root;
+}
+for (const windows of [true, false]) {
+  const shell = windows ? "powershell" : "sh";
+  const runs = !spawnSync(shell, windows ? ["-NoProfile", "-Command", "exit 0"] : ["-c", "exit 0"]).error;
+  test(`indexCommand runs (${shell})`, { skip: !runs || (windows && process.platform !== "win32") }, () => {
+    const native = indexFixture(), root = windows ? native : native.replaceAll("\\", "/");
+    const c = L.indexCommand(root, windows);
+    const r = spawnSync(c.command, c.args, { encoding: "utf8" });
+    assert.equal(r.status, 0, r.stderr);
+    assert.deepEqual(L.indexLines(r.stdout, windows).paths.sort(), [".hidden/x.txt", "sub/inner.md", "top.txt"]);
+    const missing = L.indexCommand(root + "-missing", windows);
+    assert.notEqual(spawnSync(missing.command, missing.args, { encoding: "utf8" }).status, 0);
+  });
+}
