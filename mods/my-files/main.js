@@ -10,7 +10,11 @@ import { v_flex, h_flex, Editor, EditorState, TextView } from "gpui-base";
 import { spaces, panes, focused, exec, readTextFile, writeTextFile, watchFolder, theme, settings, window, openOverlay, run, notify } from "herdr";
 import { absolutePath, quoteForPrompt, editability, previewText, sameText, isSaveKey, restoreEol, syncDecision, saveFailure, REASONS, isMarkdown } from "./logic.js";
 
+// A folder the panel shows instead of following the focused pane (the 바탕화면 button); null follows.
+let pinned = null;
+
 function location() {
+  if (pinned) return { cwd: pinned, on: null, space: `pinned:${pinned}` };
   const space = spaces().find(s => s.active), f = focused();
   const pane = f?.pane ? panes().find(p => p.pane === f.pane) : null;
   const on = f?.pane === null ? (f.terminal?.includes("/") ? f.terminal.split("/")[0] : null) : space?.machine ?? null;
@@ -45,6 +49,25 @@ export default class Files extends View {
     this.entries = new Map(); this.folders = new Set(); this.pending = new Set(); this.marks = {};
     this.refresh(cx);
     cx.timer.every(10000, cx => this.refresh(cx));
+    this.findDesktop(cx);
+  }
+
+  // The real Desktop folder (OneDrive or a localized name can move it), asked of Windows once.
+  findDesktop(cx) {
+    cx.spawn(async cx => {
+      try {
+        const r = await exec("powershell", ["-NoProfile", "-Command", "[Console]::OutputEncoding = [System.Text.UTF8Encoding]::new($false); [Environment]::GetFolderPath('Desktop')"]);
+        const path = r.code === 0 ? r.stdout.trim() : "";
+        if (path) { this.desktop = path; cx.notify(); }
+      } catch {}
+    });
+  }
+
+  // 바탕화면 button: show the Desktop; pressed again, follow the focused pane again.
+  toggleDesktop(cx) {
+    if (!this.desktop) return;
+    pinned = pinned === this.desktop ? null : this.desktop;
+    this.refresh(cx);
   }
 
   watch(root, cx) {
@@ -321,6 +344,7 @@ export default class Files extends View {
       .child(h_flex().h(42).flex_none().px(14).gap(8).items_center().border_b(1).border_color(t.border)
         .when(Boolean(file), el => el.child(div().id("files-back").w(20).cursor_pointer().text_color(t.muted).on_click((_e, cx) => { this.show(null); cx.notify(); }).child("←")))
         .child(div().font_semibold().child("Files"))
+        .when(!file && Boolean(this.desktop), el => el.child(chip("files-desktop", "바탕화면", pinned === this.desktop, cx => this.toggleDesktop(cx))))
         .child(div().flex_1().min_w(0).truncate().text_right().text_size(12).text_color(t.dim)
           .child(file ? (buf?.dirty ? `● ${file}` : file) : this.root?.split(/[\\/]/).pop() ?? "")))
       .when(nano, el => el.child(bar().text_color(t.dim)
