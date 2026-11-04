@@ -116,3 +116,113 @@ test("emptyText", () => {
   assert.equal(L.emptyText("mcp"), "이 폴더와 전역에 MCP 서버가 없어요");
   assert.equal(L.emptyText("skills"), "이 폴더와 전역에 스킬이 없어요");
 });
+
+test("claudeMcp: global and local (path spelling may differ)", () => {
+  const obj = {
+    mcpServers: { a: { type: "stdio", command: "npx" } },
+    projects: { "C:\\MyCode\\app": { mcpServers: { l: { command: "x" } } }, "C:/Other": { mcpServers: { o: {} } } },
+  };
+  const r = L.claudeMcp(obj, "c:/mycode/app", "c:/mycode/app");
+  assert.deepEqual(r.global, [{ name: "a", config: { type: "stdio", command: "npx" } }]);
+  assert.deepEqual(r.local, [{ name: "l", config: { command: "x" } }]);
+  // A subfolder has no entry of its own: the repository root's is used.
+  assert.deepEqual(L.claudeMcp(obj, "C:/MyCode/app/sub", "C:/MyCode/app").local.map(s => s.name), ["l"]);
+  assert.deepEqual(L.claudeMcp({}, "/x", "/x"), { global: [], local: [] });
+  assert.deepEqual(L.servers(null), []);
+  assert.deepEqual(L.servers({ s: { url: "u" } }), [{ name: "s", config: { url: "u" } }]);
+});
+
+test("pluginRoots: user plugins, and project plugins of this repository", () => {
+  const obj = { version: 2, plugins: {
+    "superpowers@m": [{ scope: "user", installPath: "C:\\p\\sp" }, { scope: "user", installPath: "C:\\p\\old" }],
+    "local@m": [{ scope: "project", projectPath: "C:\\MyCode\\app", installPath: "C:\\p\\local" }],
+    "other@m": [{ scope: "project", projectPath: "C:\\Else", installPath: "C:\\p\\else" }],
+  } };
+  assert.deepEqual(L.pluginRoots(obj, "c:/mycode/app"), [{ plugin: "superpowers", path: "C:\\p\\sp" }, { plugin: "local", path: "C:\\p\\local" }]);
+  assert.deepEqual(L.pluginRoots(null, "/x"), []);
+});
+
+const TOML = `
+model = "o3"   # top-level keys are kept but unused
+
+[mcp_servers.context7]
+command = "npx"
+args = ["-y", "@upstash/context7-mcp"]
+env = { MY_KEY = "secret", "QUOTED.KEY" = 'lit\\eral' }
+
+[mcp_servers."my.server"]
+url = "https://example.com/mcp?a=1"
+enabled = false
+startup_timeout_sec = 20
+
+[mcp_servers.multi]
+command = "node"
+args = [
+  "server.js",   # comment inside
+  "--port", "8080",
+]
+[mcp_servers.multi.env]
+TOKEN = "abc\\n\\"x\\""
+
+[mcp_servers.broken]
+command = """multi"""
+`;
+
+test("parseToml: the values mcp_servers uses", () => {
+  const { data, errors } = L.parseToml(TOML);
+  assert.equal(data.model, "o3");
+  assert.deepEqual(data.mcp_servers.context7, { command: "npx", args: ["-y", "@upstash/context7-mcp"], env: { MY_KEY: "secret", "QUOTED.KEY": "lit\\eral" } });
+  assert.deepEqual(data.mcp_servers["my.server"], { url: "https://example.com/mcp?a=1", enabled: false, startup_timeout_sec: 20 });
+  assert.deepEqual(data.mcp_servers.multi, { command: "node", args: ["server.js", "--port", "8080"], env: { TOKEN: "abc\n\"x\"" } });
+  assert.deepEqual(errors.map(e => e.path), [["mcp_servers", "broken"]]);
+});
+
+test("parseToml: other tables and arrays of tables don't disturb it", () => {
+  const { data, errors } = L.parseToml(`[profiles.fast]\nmodel = "x"\n[[hooks]]\nrun = "y"\n[mcp_servers.a]\ncommand = "z"\n`);
+  assert.deepEqual(data.mcp_servers.a, { command: "z" });
+  assert.equal(data.hooks, undefined);
+  assert.deepEqual(errors, []);
+});
+
+test("codexMcp", () => {
+  assert.deepEqual(L.codexMcp(TOML).map(s => [s.name, s.enabled, s.error !== null]),
+    [["context7", true, false], ["my.server", false, false], ["multi", true, false], ["broken", true, true]]);
+  assert.deepEqual(L.codexMcp(""), []);
+  assert.deepEqual(L.codexMcp("[mcp_servers]\n"), []);
+});
+
+test("redact hides secrets but keeps their names", () => {
+  const c = {
+    command: "npx", args: ["-y", "pkg", "--api-key", "sk-1", "--token=abc", "--port", "1"],
+    env: { A: "1", B: "2" }, headers: { Authorization: "Bearer x" }, bearer_token_env_var: "FIGMA",
+    url: "https://h/mcp?api_key=s3&x=1",
+  };
+  assert.deepEqual(L.redact(c), {
+    command: "npx", args: ["-y", "pkg", "--api-key", "••••", "--token=••••", "--port", "1"],
+    env: { A: "••••", B: "••••" }, headers: { Authorization: "••••" }, bearer_token_env_var: "••••",
+    url: "https://h/mcp?api_key=••••&x=1",
+  });
+  assert.equal(c.env.A, "1"); // the original is untouched
+  assert.deepEqual(L.redact({ http_headers: { X: "1" }, env_http_headers: { Y: "ENV" } }), { http_headers: { X: "••••" }, env_http_headers: { Y: "••••" } });
+});
+
+test("serverSummary", () => {
+  assert.equal(L.serverSummary({ type: "stdio", command: "npx", args: ["-y", "@upstash/context7-mcp"] }), "stdio npx -y @upstash/context7-mcp");
+  assert.equal(L.serverSummary({ type: "http", url: "https://mcp.figma.com/mcp" }), "http https://mcp.figma.com/mcp");
+  assert.equal(L.serverSummary({ url: "https://x/sse", type: "sse" }), "sse https://x/sse");
+  assert.equal(L.serverSummary({ url: "https://x/mcp" }), "http https://x/mcp");
+  assert.equal(L.serverSummary({ command: "node", args: ["--token", "t"] }), "stdio node --token ••••");
+  const long = L.serverSummary({ command: "x".repeat(100) });
+  assert.equal(long.length, 80);
+  assert.ok(long.endsWith("…"));
+});
+
+test("configLines: nested values as indented lines", () => {
+  assert.deepEqual(L.configLines({ command: "npx", args: ["-y", "a b"], env: { K: "v" }, enabled: false }), [
+    { depth: 0, text: "command: npx" },
+    { depth: 0, text: "args: -y \"a b\"" },
+    { depth: 0, text: "env:" },
+    { depth: 1, text: "K: v" },
+    { depth: 0, text: "enabled: false" },
+  ]);
+});

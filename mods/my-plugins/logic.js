@@ -147,3 +147,260 @@ export function groupBySource(sorted) {
 export function emptyText(tab) {
   return tab === "mcp" ? "이 폴더와 전역에 MCP 서버가 없어요" : "이 폴더와 전역에 스킬이 없어요";
 }
+
+const isObject = v => v !== null && typeof v === "object" && !Array.isArray(v);
+
+/** { name: config } → [{ name, config }]. */
+export function servers(map) {
+  return isObject(map) ? Object.entries(map).map(([name, config]) => ({ name, config })) : [];
+}
+
+/** Claude Code's ~/.claude.json: user servers, and the local servers stored for this folder (or its repository). */
+export function claudeMcp(obj, cwd, repo) {
+  const projects = isObject(obj?.projects) ? Object.entries(obj.projects) : [];
+  const entry = (projects.find(([p]) => samePath(p, cwd)) ?? projects.find(([p]) => samePath(p, repo)))?.[1];
+  return { global: servers(obj?.mcpServers), local: servers(entry?.mcpServers) };
+}
+
+/** installed_plugins.json: each plugin's folder (user scope, or project scope for this repository). */
+export function pluginRoots(obj, repo) {
+  const out = [];
+  for (const [id, list] of Object.entries(isObject(obj?.plugins) ? obj.plugins : {})) {
+    const entries = Array.isArray(list) ? list : [list];
+    const pick = entries.find(e => e?.installPath && (!e.projectPath || samePath(e.projectPath, repo)));
+    if (pick) out.push({ plugin: id.split("@")[0], path: pick.installPath });
+  }
+  return out;
+}
+
+// A small TOML reader: enough for Codex's [mcp_servers.*] tables.
+class Toml {
+  constructor(s) { this.s = s; this.i = 0; }
+  peek() { return this.s[this.i]; }
+  ws() { while (this.i < this.s.length && (this.s[this.i] === " " || this.s[this.i] === "\t")) this.i++; }
+  skipLine() { while (this.i < this.s.length && this.s[this.i] !== "\n") this.i++; }
+  // Spaces, newlines and comments.
+  wsnl() {
+    for (;;) {
+      this.ws();
+      const c = this.peek();
+      if (c === "#") this.skipLine();
+      else if (c === "\n" || c === "\r") this.i++;
+      else return;
+    }
+  }
+  endOfLine() {
+    this.ws();
+    if (this.peek() === "#") this.skipLine();
+    const c = this.peek();
+    if (c !== undefined && c !== "\n" && c !== "\r") throw new Error("줄 끝에 알 수 없는 내용");
+  }
+  key() {
+    this.ws();
+    const c = this.peek();
+    if (c === '"') return this.basic();
+    if (c === "'") return this.literal();
+    const m = /^[A-Za-z0-9_-]+/.exec(this.s.slice(this.i));
+    if (!m) throw new Error("키를 읽지 못함");
+    this.i += m[0].length;
+    return m[0];
+  }
+  keyPath() {
+    const path = [this.key()];
+    for (;;) {
+      this.ws();
+      if (this.peek() !== ".") return path;
+      this.i++;
+      path.push(this.key());
+    }
+  }
+  basic() {
+    this.i++;
+    let out = "";
+    for (;;) {
+      const c = this.s[this.i++];
+      if (c === undefined || c === "\n") throw new Error("닫히지 않은 문자열");
+      if (c === '"') return out;
+      if (c !== "\\") { out += c; continue; }
+      const e = this.s[this.i++];
+      const simple = { n: "\n", t: "\t", r: "\r", b: "\b", f: "\f", '"': '"', "\\": "\\" };
+      if (e in simple) out += simple[e];
+      else if (e === "u" || e === "U") {
+        const n = e === "u" ? 4 : 8, hex = this.s.slice(this.i, this.i + n);
+        if (!/^[0-9a-fA-F]+$/.test(hex) || hex.length !== n) throw new Error("잘못된 이스케이프");
+        out += String.fromCodePoint(parseInt(hex, 16));
+        this.i += n;
+      } else throw new Error("잘못된 이스케이프");
+    }
+  }
+  literal() {
+    this.i++;
+    const end = this.s.indexOf("'", this.i), nl = this.s.indexOf("\n", this.i);
+    if (end < 0 || (nl >= 0 && nl < end)) throw new Error("닫히지 않은 문자열");
+    const out = this.s.slice(this.i, end);
+    this.i = end + 1;
+    return out;
+  }
+  value() {
+    this.ws();
+    const c = this.peek(), rest = this.s.slice(this.i);
+    if (rest.startsWith('"""') || rest.startsWith("'''")) throw new Error("여러 줄 문자열은 지원하지 않음");
+    if (c === '"') return this.basic();
+    if (c === "'") return this.literal();
+    if (c === "[") {
+      this.i++;
+      const arr = [];
+      for (;;) {
+        this.wsnl();
+        if (this.peek() === "]") { this.i++; return arr; }
+        arr.push(this.value());
+        this.wsnl();
+        if (this.peek() === ",") { this.i++; continue; }
+        if (this.peek() === "]") { this.i++; return arr; }
+        throw new Error("배열을 읽지 못함");
+      }
+    }
+    if (c === "{") {
+      this.i++;
+      const obj = {};
+      this.ws();
+      if (this.peek() === "}") { this.i++; return obj; }
+      for (;;) {
+        const path = this.keyPath();
+        this.ws();
+        if (this.peek() !== "=") throw new Error("= 가 없음");
+        this.i++;
+        setPath(obj, path, this.value());
+        this.ws();
+        if (this.peek() === ",") { this.i++; continue; }
+        if (this.peek() === "}") { this.i++; return obj; }
+        throw new Error("인라인 표를 읽지 못함");
+      }
+    }
+    const m = /^(true|false|[+-]?\d[\d_]*(?:\.\d+)?)(?=[\s,\]}#]|$)/.exec(rest);
+    if (!m) throw new Error("지원하지 않는 값");
+    this.i += m[0].length;
+    return m[1] === "true" ? true : m[1] === "false" ? false : Number(m[1].replaceAll("_", ""));
+  }
+}
+
+function ensure(root, path) {
+  let cur = root;
+  for (const k of path) {
+    if (cur[k] === undefined) cur[k] = {};
+    if (!isObject(cur[k])) throw new Error("이미 값이 있는 키");
+    cur = cur[k];
+  }
+  return cur;
+}
+
+function setPath(obj, path, value) {
+  ensure(obj, path.slice(0, -1))[path[path.length - 1]] = value;
+}
+
+/**
+ * Reads TOML tables, keys and the values above. A line it can't read is skipped and noted in errors
+ * under the table it belongs to; arrays of tables ([[x]]) are skipped.
+ */
+export function parseToml(text) {
+  const p = new Toml(String(text ?? "").replace(/^﻿/, "")), data = {}, errors = [];
+  let table = data, at = [];
+  for (;;) {
+    p.wsnl();
+    if (p.i >= p.s.length) break;
+    const start = p.i;
+    let header = false;
+    try {
+      if (p.peek() === "[") {
+        header = true;
+        if (p.s[p.i + 1] === "[") { table = null; at = null; p.skipLine(); continue; }
+        p.i++;
+        const path = p.keyPath();
+        p.ws();
+        if (p.peek() !== "]") throw new Error("표 이름을 읽지 못함");
+        p.i++;
+        p.endOfLine();
+        table = ensure(data, path); at = path;
+        continue;
+      }
+      const path = p.keyPath();
+      p.ws();
+      if (p.peek() !== "=") throw new Error("= 가 없음");
+      p.i++;
+      const value = p.value();
+      p.endOfLine();
+      if (table) setPath(table, path, value);
+    } catch (e) {
+      if (at) errors.push({ path: at, message: e.message });
+      if (header) { table = null; at = null; }
+      p.i = start;
+      p.skipLine();
+    }
+  }
+  return { data, errors };
+}
+
+/** Codex's [mcp_servers.<name>] tables. enabled is false only when it says enabled = false. */
+export function codexMcp(text) {
+  const { data, errors } = parseToml(text);
+  const table = isObject(data.mcp_servers) ? data.mcp_servers : {};
+  const names = [...Object.keys(table)];
+  for (const e of errors) if (e.path[0] === "mcp_servers" && e.path[1] && !names.includes(e.path[1])) names.push(e.path[1]);
+  return names.map(name => {
+    const config = isObject(table[name]) ? table[name] : {};
+    const error = errors.find(e => e.path[0] === "mcp_servers" && e.path[1] === name)?.message ?? null;
+    return { name, config, enabled: config.enabled !== false, error };
+  });
+}
+
+export const MASK = "••••";
+const SECRET_MAPS = new Set(["env", "headers", "http_headers", "env_http_headers"]);
+const SECRET = /token|secret|key|password|auth/i;
+const FLAG = /^--?[\w.-]*(?:token|secret|key|password|auth)[\w.-]*$/i;
+const FLAG_VALUE = /^(--?[\w.-]*(?:token|secret|key|password|auth)[\w.-]*=).*$/i;
+const QUERY = /([?&][^=&#]*(?:token|secret|key|password|auth)[^=&#]*=)[^&#]*/gi;
+
+function redactArgs(args) {
+  return args.map((a, i) => {
+    if (typeof a !== "string") return a;
+    if (i > 0 && typeof args[i - 1] === "string" && FLAG.test(args[i - 1])) return MASK;
+    return a.replace(FLAG_VALUE, `$1${MASK}`);
+  });
+}
+
+/** A copy with env/header values, secret-named strings, secret flags in args and secret URL parameters masked. */
+export function redact(v) {
+  if (Array.isArray(v)) return v.map(redact);
+  if (!isObject(v)) return v;
+  const out = {};
+  for (const [k, x] of Object.entries(v)) {
+    if (SECRET_MAPS.has(k) && isObject(x)) out[k] = Object.fromEntries(Object.keys(x).map(n => [n, MASK]));
+    else if (k === "args" && Array.isArray(x)) out[k] = redactArgs(x);
+    else if (k === "url" && typeof x === "string") out[k] = x.replace(QUERY, `$1${MASK}`);
+    else if (typeof x === "string" && SECRET.test(k)) out[k] = MASK;
+    else out[k] = redact(x);
+  }
+  return out;
+}
+
+/** One line for a server row: "stdio <command> <args>" or "http|sse <url>", at most 80 characters. */
+export function serverSummary(config) {
+  const c = redact(isObject(config) ? config : {});
+  const s = c.url
+    ? `${c.type === "sse" ? "sse" : "http"} ${c.url}`
+    : `stdio ${[c.command, ...(Array.isArray(c.args) ? c.args : [])].filter(x => x !== undefined && x !== null).join(" ")}`;
+  return s.length > 80 ? s.slice(0, 79) + "…" : s;
+}
+
+const show = x => (typeof x === "string" ? (/\s/.test(x) ? JSON.stringify(x) : x) : JSON.stringify(x));
+
+/** key: value lines for the detail view; nested tables one level deeper. Pass a redacted config. */
+export function configLines(v, depth = 0) {
+  const out = [];
+  for (const [k, x] of Object.entries(isObject(v) ? v : {})) {
+    if (isObject(x)) { out.push({ depth, text: `${k}:` }); out.push(...configLines(x, depth + 1)); }
+    else if (Array.isArray(x)) out.push({ depth, text: `${k}: ${x.map(show).join(" ")}` });
+    else out.push({ depth, text: `${k}: ${String(x)}` });
+  }
+  return out;
+}
