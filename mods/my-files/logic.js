@@ -82,8 +82,25 @@ function subsequence(lower, part, from) {
 
 const wordStart = (path, i) => i === 0 || "/.-_ ".includes(path[i - 1]) || (/[a-z]/.test(path[i - 1]) && /[A-Z]/.test(path[i]));
 
-function matchParts(parts, path) {
-  const lower = path.toLowerCase(), nameStart = path.lastIndexOf("/") + 1, hits = new Set();
+// Lowercase per code point so every index maps 1:1 to the original string: when the lowercase form
+// changes the length (e.g. "İ" -> "i" + combining dot), use its first code point if that keeps the
+// length, otherwise keep the original character.
+function lowerAligned(s) {
+  let out = "";
+  for (const ch of s) {
+    const l = ch.toLowerCase();
+    if (l.length === ch.length) out += l;
+    else {
+      const first = String.fromCodePoint(l.codePointAt(0));
+      out += first.length === ch.length ? first : ch;
+    }
+  }
+  return out;
+}
+
+// Score (and, with wantHits, matched code-unit positions) of every query part against path, or null.
+function matchParts(parts, path, wantHits) {
+  const lower = lowerAligned(path), nameStart = path.lastIndexOf("/") + 1, hits = wantHits ? new Set() : null;
   let score = -path.length;
   for (const part of parts) {
     let found = subsequence(lower, part, nameStart), inName = true;
@@ -96,13 +113,16 @@ function matchParts(parts, path) {
       if (i === prev + 1) score += 15;
       if (wordStart(path, i)) score += 20;
       prev = i;
-      hits.add(i);
+      if (hits) {
+        hits.add(i);
+        if (path.codePointAt(i) > 0xffff) hits.add(i + 1);
+      }
     }
   }
-  return { score, hits: [...hits].sort((a, b) => a - b) };
+  return wantHits ? { score, hits: [...hits].sort((x, y) => x - y) } : { score };
 }
 
-const queryParts = query => String(query ?? "").toLowerCase().split(/\s+/).filter(Boolean);
+const queryParts = query => lowerAligned(String(query ?? "")).split(/\s+/).filter(Boolean);
 
 /**
  * Fuzzy file-path match: every space-separated part of the query must appear in order (ignoring case),
@@ -110,7 +130,7 @@ const queryParts = query => String(query ?? "").toLowerCase().split(/\s+/).filte
  */
 export function fuzzyMatch(query, path) {
   const parts = queryParts(query);
-  return parts.length ? matchParts(parts, path) : null;
+  return parts.length ? matchParts(parts, path, true) : null;
 }
 
 /** Matching paths, best first (then shorter, then alphabetical); at most `limit`, `more` if cut. */
@@ -118,11 +138,12 @@ export function searchPaths(paths, query, limit) {
   const parts = queryParts(query), all = [];
   if (!parts.length) return { results: [], more: false };
   for (const path of paths) {
-    const m = matchParts(parts, path);
-    if (m) all.push({ path, ...m });
+    const m = matchParts(parts, path, false);
+    if (m) all.push({ path, score: m.score });
   }
   all.sort((a, b) => b.score - a.score || a.path.length - b.path.length || (a.path < b.path ? -1 : a.path > b.path ? 1 : 0));
-  return { results: all.slice(0, limit), more: all.length > limit };
+  const results = all.slice(0, limit).map(r => ({ path: r.path, ...matchParts(parts, r.path, true) }));
+  return { results, more: all.length > limit };
 }
 
 /** "a/b/c.txt" → { dir: "a/b", name: "c.txt" }. */

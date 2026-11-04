@@ -143,3 +143,25 @@ test("splitPath and segments", () => {
   assert.deepEqual(L.segments("ab", []), [{ text: "ab", hit: false }]);
   assert.deepEqual(L.segments("", []), []);
 });
+
+test("fuzzyMatch: length-changing lowercase keeps hit positions aligned", () => {
+  assert.deepEqual(L.fuzzyMatch("b", "İb.txt").hits, [1]);
+  assert.deepEqual(L.fuzzyMatch("i", "İx").hits, [0]);
+});
+
+test("fuzzyMatch and segments: astral characters highlight both code units", () => {
+  assert.deepEqual(L.fuzzyMatch("😀", "a😀.txt").hits, [1, 2]);
+  assert.deepEqual(L.segments("a😀.txt", [1, 2]), [{ text: "a", hit: false }, { text: "😀", hit: true }, { text: ".txt", hit: false }]);
+});
+
+test("fuzzyMatch: full-path fallback and repeated-part dedupe", () => {
+  assert.deepEqual(L.fuzzyMatch("main", "main/src/x.js").hits, [0, 1, 2, 3]);
+  assert.deepEqual(L.fuzzyMatch("main main", "src/main.js").hits, [4, 5, 6, 7]);
+});
+
+test("searchPaths: more is false at exactly limit; empty query is empty", () => {
+  const paths = ["main/src/x.js", "src/main.js", "a/main.js", "docs/readme.md"];
+  assert.equal(L.searchPaths(paths, "main", 3).more, false);
+  assert.equal(L.searchPaths(paths, "main", 3).results.length, 3);
+  assert.deepEqual(L.searchPaths(paths, null, 5), { results: [], more: false });
+});
