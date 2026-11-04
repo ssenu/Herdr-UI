@@ -442,7 +442,7 @@ export default class Files extends View {
         cx.stop_propagation();
         cx.notify();
       })
-      .child(div().flex_none().text_color(t.dim).child("🔍"))
+      .child(svg("mods/my-files/search.svg").size(14).flex_none().text_color(t.dim))
       .child(Input.new(this.search).flex_1().h_full().text_size(12.5).text_color(t.foreground))
       .when(Boolean(index?.building), el => el.child(div().flex_none().text_size(11).text_color(t.dim).child("목록 만드는 중…")));
   }
