@@ -175,7 +175,7 @@ export function psQuote(s) {
 
 /**
  * One command listing every file under root (relative paths, one per line), skipping .git folders
- * and not following links or junctions. Stops after INDEX_LIMIT + 1 lines. Fails if root is missing.
+ * and not following links or junctions (OneDrive placeholder folders, reparse points without a link type, are entered). Stops after INDEX_LIMIT + 1 lines. Fails if root is missing.
  */
 export function indexCommand(root, windows) {
   if (windows) {
@@ -187,7 +187,8 @@ export function indexCommand(root, windows) {
       "$sb = [Text.StringBuilder]::new(); $stack = [Collections.Generic.Stack[string]]::new(); $stack.Push($root)",
       "while ($stack.Count -gt 0 -and $n -lt $limit) { $d = $stack.Pop(); " +
         "try { foreach ($f in [IO.Directory]::EnumerateFiles($d)) { [void]$sb.Append($f.Substring($root.Length).TrimStart('\\', '/')).Append(\"`n\"); $n++; if ($n -ge $limit) { break } } } catch {}; " +
-        "try { foreach ($s in [IO.Directory]::EnumerateDirectories($d)) { if ([IO.Path]::GetFileName($s) -ne '.git' -and -not ([IO.File]::GetAttributes($s) -band [IO.FileAttributes]::ReparsePoint)) { $stack.Push($s) } } } catch {} }",
+        "try { foreach ($s in [IO.Directory]::EnumerateDirectories($d)) { if ([IO.Path]::GetFileName($s) -eq '.git') { continue }; " +
+        "if ([IO.File]::GetAttributes($s) -band [IO.FileAttributes]::ReparsePoint) { if ((Get-Item -LiteralPath $s -Force).LinkType) { continue } }; $stack.Push($s) } } catch {} }",
       "[Console]::Out.Write($sb.ToString())",
     ].join("; ");
     return { command: "powershell", args: ["-NoProfile", "-Command", script] };

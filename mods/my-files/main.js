@@ -24,7 +24,7 @@ function location() {
 const key = () => JSON.stringify(location());
 const LANG = { ts: "js", tsx: "js", mts: "js", cts: "js", jsx: "js", mjs: "js", toml: "yaml", jsonc: "json", svelte: "html", vue: "html" };
 const PER_FOLDER = 500, TOTAL = 5000;
-const RESULT_LIMIT = 200, REMOTE_INDEX_MS = 60000;
+const MAX_INDEXES = 4, RESULT_LIMIT = 200, REMOTE_INDEX_MS = 60000;
 const GONE = "This file is no longer available";
 const UNREADABLE = "Cannot preview this file (binary, too large, or unreadable)";
 
@@ -133,7 +133,10 @@ export default class Files extends View {
       this.buffers = saved?.buffers ?? new Map();
       this.pending = new Set(); this.marks = {}; this.show(null); this.watched = null; this.error = null; this.limited = false;
       this.loading = false;
+      const known = this.indexes.get(next);
+      if (known && !on) known.stale = true;
       if (saved?.file) this.show(saved.file, cx);
+      this.ensureIndex(cx);
     }
     if (!cwd || this.loading) return;
     const context = this.context;
@@ -324,10 +327,16 @@ export default class Files extends View {
     const context = this.context;
     if (!this.query.trim() || !context?.cwd) return;
     const old = this.indexes.get(context.key);
+    if (old) { this.indexes.delete(context.key); this.indexes.set(context.key, old); }
     const outdated = !old || old.stale || Boolean(old.error) || (Boolean(context.on) && Date.now() - old.builtAt > REMOTE_INDEX_MS);
     if (old?.building || !outdated) return;
     const index = { paths: old?.paths ?? null, truncated: old?.truncated ?? false, builtAt: 0, stale: false, building: true, error: null };
+    this.indexes.delete(context.key);
     this.indexes.set(context.key, index);
+    for (const k of [...this.indexes.keys()]) {
+      if (this.indexes.size <= MAX_INDEXES) break;
+      if (k !== this.context?.key && k !== context.key) this.indexes.delete(k);
+    }
     const windows = !context.on && window()?.platform === "windows";
     cx.spawn(async cx => {
       try {
@@ -346,7 +355,11 @@ export default class Files extends View {
   }
 
   index() {
-    return this.context ? this.indexes.get(this.context.key) ?? null : null;
+    if (!this.context) return null;
+    const index = this.indexes.get(this.context.key);
+    if (!index) return null;
+    this.indexes.delete(this.context.key); this.indexes.set(this.context.key, index);
+    return index;
   }
 
   // Search results for the current query, cached per (query, index paths).
@@ -409,8 +422,8 @@ export default class Files extends View {
       .on_mouse_down("left", () => { this.drag = { text: quoteForPrompt(this.absolute(path)), name, dir: false }; })
       .on_click((_e, cx) => { this.at = i; this.show(path, cx); cx.notify(); })
       .child(svg("mods/my-files/file.svg").size(14).flex_none().text_color(t.muted))
-      .child(h_flex().flex_none().overflow_hidden()
-        .children(segments(name, nameHits).map(s => div().when(s.hit, el => el.text_color(t.accent).font_semibold()).child(s.text))))
+      .child(h_flex().min_w(0).flex_shrink(1).overflow_hidden()
+        .children(segments(name, nameHits).map(s => div().when(s.hit, el => el.text_color(t.accent).font_semibold()).child(s.text.replaceAll(" ", " ")))))
       .child(div().flex_1().min_w(0).truncate().text_size(11).text_color(t.dim).child(dir))
       .when(Boolean(dirty), el => el.child(div().text_size(11).text_color(t.accent).child("●")))
       .when(Boolean(mark), el => el.child(div().text_size(11).text_color(mark === "A" ? t.ansi2 : mark === "D" || mark === "U" ? t.ansi1 : t.blocked).child(mark)))
@@ -444,7 +457,8 @@ export default class Files extends View {
       .children(found ? found.results.map((r, i) => this.resultRow(r, i, t)) : [])
       .when(Boolean(found?.more), el => el.child(note("더 있어요 · 검색어를 더 입력하세요")))
       .when(Boolean(found) && found.results.length === 0, el => el.child(note(`‘${q}’와 맞는 파일이 없어요`)))
-      .when(!found && !index?.error, el => el.child(note("목록 만드는 중…")));
+      .when(!found && !index?.error && !this.context?.cwd, el => el.child(note("No folder")))
+      .when(!found && !index?.error && Boolean(this.context?.cwd) && Boolean(index?.building), el => el.child(note("목록 만드는 중…")));
   }
 
   render(cx) {
@@ -465,7 +479,7 @@ export default class Files extends View {
       .on_size_change(size => { this.size = size; })
       .on_hover(hovered => { if (!hovered) this.dropOut(); })
       .child(h_flex().h(42).flex_none().px(14).gap(8).items_center().border_b(1).border_color(t.border)
-        .when(Boolean(file), el => el.child(div().id("files-back").w(20).cursor_pointer().text_color(t.muted).on_click((_e, cx) => { this.show(null); cx.notify(); }).child("←")))
+        .when(Boolean(file), el => el.child(div().id("files-back").w(20).cursor_pointer().text_color(t.muted).on_click((_e, cx) => { this.show(null); if (this.query.trim()) this.search.focus(); cx.notify(); }).child("←")))
         .child(div().font_semibold().child("Files"))
         .when(!file && Boolean(this.desktop), el => el.child(chip("files-desktop", "바탕화면", pinned === this.desktop, cx => this.toggleDesktop(cx))))
         .child(div().flex_1().min_w(0).truncate().text_right().text_size(12).text_color(t.dim)

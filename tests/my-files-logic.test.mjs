@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { mkdtempSync, mkdirSync, writeFileSync } from "node:fs";
+import { mkdtempSync, mkdirSync, writeFileSync, symlinkSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join as pjoin } from "node:path";
 // Tests the repository copy of the mod (mods/ next to tests/).
@@ -212,6 +212,14 @@ for (const windows of [true, false]) {
   const runs = !spawnSync(shell, windows ? ["-NoProfile", "-Command", "exit 0"] : ["-c", "exit 0"]).error;
   test(`indexCommand runs (${shell})`, { skip: !runs || (windows && process.platform !== "win32") }, () => {
     const native = indexFixture(), root = windows ? native : native.replaceAll("\\", "/");
+    mkdirSync(pjoin(native, "sub", ".git"));
+    writeFileSync(pjoin(native, "sub", ".git", "config"), "x");
+    if (windows) {
+      const target = pjoin(mkdtempSync(pjoin(tmpdir(), "files-target-")), "outside");
+      mkdirSync(target);
+      writeFileSync(pjoin(target, "secret.txt"), "x");
+      symlinkSync(target, pjoin(native, "link"), "junction");
+    }
     const c = L.indexCommand(root, windows);
     const r = spawnSync(c.command, c.args, { encoding: "utf8" });
     assert.equal(r.status, 0, r.stderr);
