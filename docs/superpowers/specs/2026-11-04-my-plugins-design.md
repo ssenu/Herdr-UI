@@ -32,7 +32,7 @@
   - 원격/유닉스: `exec("sh", ["-c", script, "plugins", ...dirs], { on })`. `~`는 스크립트 안에서 `$HOME`으로.
   - 로컬 Windows: `exec("powershell", ["-NoProfile", "-Command", script])`, 출력은 UTF-8로 강제.
   - 출력 형식: 첫 줄 `HOME\t<경로>`, 이후 `DIR\t<스킬 폴더>\t<하위 이름>` 줄들. 파싱은 `logic.js`.
-  - 경로는 인자로 넘기고 스크립트 문자열에 끼워 넣지 않는다(따옴표·`&` 문제 방지).
+  - 경로는 sh에는 인자로 넘기고, PowerShell에는 작은따옴표 리터럴(`'` → `''`)로만 넣는다(따옴표·`&` 문제 방지).
 - 순서: ① 목록 스크립트(home + 스킬 하위 폴더) → ② 설정 파일과 SKILL.md들을 병렬로 읽기.
 - 새로고침: 패널이 보일 때(`visible()`, GitHub 패널과 같은 방식), 대상(cwd·on·에이전트)이 바뀔 때, ⟳ 버튼. 주기 polling 없음. 진행 중에 또 요청되면 끝난 뒤 한 번 더(`loading`/`again`).
 
