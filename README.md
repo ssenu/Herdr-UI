@@ -130,6 +130,7 @@ mod는 덮어쓰고, 레이아웃은 이미 연결돼 있으면 그대로 둡니
 - `my-files`, `my-tabs` 는 기본 mod의 복제본이라 Herdr가 기본 `files`/`tabs` 를 업데이트해도 자동으로 따라가지 않습니다.
 - 탭 바를 `my-tabs` 로 바꾸면 스페이스별로 기억하던 패널 선택이 한 번 초기화됩니다.
 - Plugins 패널은 읽기 전용입니다(켜기/끄기·삭제는 각 에이전트에서: Claude는 `/mcp`, `claude mcp remove`). Codex 시스템 스킬과 `/etc/codex/skills` 는 보이지 않습니다. 설정을 바꾼 뒤 열린 세션에 반영되는지는 에이전트에 달려 있습니다.
+- Plugins 패널은 Claude 플러그인이 제공하는 MCP 서버와 꺼 둔 플러그인/서버 상태(`enabledPlugins`, `disabledMcpServers`)를 반영하지 않습니다. Codex의 `CODEX_HOME`은 무시하고 `~/.codex`를 읽으며, 원격 스페이스는 유닉스(sh) 머신으로 가정합니다.
 
 ## 개발
 

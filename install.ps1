@@ -91,7 +91,7 @@ if (Get-Command herdr-app -ErrorAction SilentlyContinue) {
   if (Test-Path $shared) {
     $text = [IO.File]::ReadAllText($shared)
     try { $current = ($text | ConvertFrom-Json).layout }
-    catch { if ($text -match '"layout"\s*:\s*"([^"]*)"') { $current = $Matches[1] } }
+    catch { if ($text -cmatch '"layout"\s*:\s*"([^"]*)"') { $current = $Matches[1] } }
   }
   if ($current -ne $Layout) {
     $json = '{"name":"' + $Layout + '"}'

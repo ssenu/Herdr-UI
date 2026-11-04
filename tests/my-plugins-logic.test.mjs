@@ -266,3 +266,23 @@ test("claudeMcp: an empty cwd entry falls back to the repository entry", () => {
   const obj = { projects: { "/a/b": { mcpServers: {} }, "/a": { mcpServers: { s: {} } } } };
   assert.deepEqual(L.claudeMcp(obj, "/a/b", "/a").local.map(s => s.name), ["s"]);
 });
+
+test("redactArgs: URL and header-style args", () => {
+  assert.deepEqual(
+    L.redact({ args: ["-y", "mcp-remote", "https://u:p@host/sse?api_key=XXX&x=1"] }),
+    { args: ["-y", "mcp-remote", "https://••••@host/sse?api_key=••••&x=1"] });
+  assert.deepEqual(L.redact({ args: ["--header", "X-API-Key: abc"] }), { args: ["--header", "X-API-Key: ••••"] });
+  assert.deepEqual(L.redact({ args: ["--header", "Authorization: Bearer z"] }), { args: ["--header", "Authorization: ••••"] });
+});
+
+test("mapLimit keeps order and caps concurrency", async () => {
+  let cur = 0, max = 0;
+  const out = await L.mapLimit([5, 1, 4, 2, 3, 0, 6], 3, async x => {
+    cur++; max = Math.max(max, cur);
+    await new Promise(r => setTimeout(r, x));
+    cur--; return x * 2;
+  });
+  assert.deepEqual(out, [10, 2, 8, 4, 6, 0, 12]);
+  assert.ok(max <= 3 && max > 1);
+  assert.deepEqual(await L.mapLimit([], 3, async x => x), []);
+});

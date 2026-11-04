@@ -5,7 +5,7 @@ import { v_flex, h_flex, TextView } from "gpui-base";
 import { spaces, panes, focused, agents, exec, readTextFile, theme, layout, openOverlay, window } from "herdr";
 import {
   join, nativePath, samePath, ancestors, listingCommand, listingLines, frontmatter, agentKind, dragText,
-  sortItems, groupBySource, emptyText, servers, claudeMcp, pluginRoots, codexMcp, serverSummary, configLines,
+  sortItems, groupBySource, emptyText, servers, claudeMcp, pluginRoots, codexMcp, serverSummary, configLines, mapLimit,
 } from "./logic.js";
 
 function location() {
@@ -92,13 +92,14 @@ async function collect({ cwd, on }, agent) {
   }
 
   const found = await list(skillDirs.map(d => d.dir));
-  const skills = await Promise.all(skillDirs.flatMap(d => (found.dirs.get(d.dir) ?? []).map(async name => {
+  const skillRefs = skillDirs.flatMap(d => (found.dirs.get(d.dir) ?? []).map(name => ({ d, name })));
+  const skills = await mapLimit(skillRefs, 6, async ({ d, name }) => {
     const file = join(d.dir, name, "SKILL.md"), text = await read(file);
     const common = { kind: "skill", source: d.source, plugin: d.plugin, file };
     if (text === null) return { ...common, name, description: "읽지 못했어요", body: "", error: true };
     const fm = frontmatter(text, name);
     return { ...common, name: fm.name, description: fm.description, body: fm.body };
-  })));
+  });
   return { mcp: sortItems(mcp), skills: sortItems(skills), problems };
 }
 

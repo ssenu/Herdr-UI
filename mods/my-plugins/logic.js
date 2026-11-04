@@ -309,7 +309,7 @@ function setPath(obj, path, value) {
  * under the table it belongs to; arrays of tables ([[x]]) are skipped.
  */
 export function parseToml(text) {
-  const p = new Toml(String(text ?? "").replace(/^﻿/, "")), data = {}, errors = [];
+  const p = new Toml(String(text ?? "").replace(/^\uFEFF/, "")), data = {}, errors = [];
   let table = data, at = [];
   for (;;) {
     p.wsnl();
@@ -372,15 +372,31 @@ const USERINFO = /\/\/[^/@\s]*@/;
 const ENV_ARG = /^([A-Za-z_][\w.-]*)=/;
 const QUERY = /([?&][^=&#]*(?:token|secret|key|password|auth)[^=&#]*=)[^&#]*/gi;
 
+const HEADER_ARG = /^([\w-]*(?:token|secret|key|password|auth)[\w-]*)\s*:/i;
+const maskUrl = s => s.replace(USERINFO, `//${MASK}@`).replace(QUERY, `$1${MASK}`);
+
 function redactArgs(args) {
   return args.map((a, i) => {
     if (typeof a !== "string") return a;
     if (i > 0 && typeof args[i - 1] === "string" && FLAG.test(args[i - 1])) return MASK;
     if (/^authorization:/i.test(a)) return `Authorization: ${MASK}`;
+    const h = HEADER_ARG.exec(a);
+    if (h) return `${h[1]}: ${MASK}`;
     const e = ENV_ARG.exec(a);
     if (e && SECRET.test(e[1])) return `${e[1]}=${MASK}`;
-    return a.replace(FLAG_VALUE, `$1${MASK}`);
+    return maskUrl(a.replace(FLAG_VALUE, `$1${MASK}`));
   });
+}
+
+/** Results of fn over items in input order, with at most `limit` calls in flight. */
+export async function mapLimit(items, limit, fn) {
+  const out = new Array(items.length);
+  let next = 0;
+  const worker = async () => {
+    while (next < items.length) { const i = next++; out[i] = await fn(items[i], i); }
+  };
+  await Promise.all(Array.from({ length: Math.max(1, Math.min(limit, items.length)) }, worker));
+  return out;
 }
 
 /** A copy with env/header values, secret-named strings, secret flags in args and secret URL parameters masked. */
@@ -391,7 +407,7 @@ export function redact(v) {
   for (const [k, x] of Object.entries(v)) {
     if (SECRET_MAPS.has(k)) out[k] = isObject(x) ? Object.fromEntries(Object.keys(x).map(n => [n, MASK])) : MASK;
     else if (k === "args" && Array.isArray(x)) out[k] = redactArgs(x);
-    else if (k === "url" && typeof x === "string") out[k] = x.replace(USERINFO, `//${MASK}@`).replace(QUERY, `$1${MASK}`);
+    else if (k === "url" && typeof x === "string") out[k] = maskUrl(x);
     else if (SECRET.test(k) && k !== "args" && k !== "url") out[k] = MASK;
     else out[k] = redact(x);
   }
