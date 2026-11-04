@@ -66,3 +66,78 @@ export function isSaveKey(keystroke) {
 export function isMarkdown(path) {
   return /\.(md|markdown)$/i.test(path ?? "");
 }
+
+// Letters of `part` in order inside `lower` from index `from`: their positions, or null.
+function subsequence(lower, part, from) {
+  const out = [];
+  let j = from;
+  for (const ch of part) {
+    const i = lower.indexOf(ch, j);
+    if (i < 0) return null;
+    out.push(i);
+    j = i + ch.length;
+  }
+  return out;
+}
+
+const wordStart = (path, i) => i === 0 || "/.-_ ".includes(path[i - 1]) || (/[a-z]/.test(path[i - 1]) && /[A-Z]/.test(path[i]));
+
+function matchParts(parts, path) {
+  const lower = path.toLowerCase(), nameStart = path.lastIndexOf("/") + 1, hits = new Set();
+  let score = -path.length;
+  for (const part of parts) {
+    let found = subsequence(lower, part, nameStart), inName = true;
+    if (!found) { found = subsequence(lower, part, 0); inName = false; }
+    if (!found) return null;
+    if (inName) score += 100;
+    let prev = -2;
+    for (const i of found) {
+      score += 10;
+      if (i === prev + 1) score += 15;
+      if (wordStart(path, i)) score += 20;
+      prev = i;
+      hits.add(i);
+    }
+  }
+  return { score, hits: [...hits].sort((a, b) => a - b) };
+}
+
+const queryParts = query => String(query ?? "").toLowerCase().split(/\s+/).filter(Boolean);
+
+/**
+ * Fuzzy file-path match: every space-separated part of the query must appear in order (ignoring case),
+ * tried in the file name first, then the whole path. Higher score is better; hits are matched positions.
+ */
+export function fuzzyMatch(query, path) {
+  const parts = queryParts(query);
+  return parts.length ? matchParts(parts, path) : null;
+}
+
+/** Matching paths, best first (then shorter, then alphabetical); at most `limit`, `more` if cut. */
+export function searchPaths(paths, query, limit) {
+  const parts = queryParts(query), all = [];
+  if (!parts.length) return { results: [], more: false };
+  for (const path of paths) {
+    const m = matchParts(parts, path);
+    if (m) all.push({ path, ...m });
+  }
+  all.sort((a, b) => b.score - a.score || a.path.length - b.path.length || (a.path < b.path ? -1 : a.path > b.path ? 1 : 0));
+  return { results: all.slice(0, limit), more: all.length > limit };
+}
+
+/** "a/b/c.txt" → { dir: "a/b", name: "c.txt" }. */
+export function splitPath(path) {
+  const i = path.lastIndexOf("/");
+  return { dir: i < 0 ? "" : path.slice(0, i), name: path.slice(i + 1) };
+}
+
+/** Runs of matched / unmatched characters, for highlighting. */
+export function segments(text, hits) {
+  const set = new Set(hits), out = [];
+  for (let i = 0; i < text.length; i++) {
+    const hit = set.has(i), last = out[out.length - 1];
+    if (last && last.hit === hit) last.text += text[i];
+    else out.push({ text: text[i], hit });
+  }
+  return out;
+}

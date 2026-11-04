@@ -106,3 +106,40 @@ test("isMarkdown: .md and .markdown, any case", () => {
   assert.equal(L.isMarkdown("md"), false);
   assert.equal(L.isMarkdown(null), false);
 });
+
+test("fuzzyMatch: letters in order, case-insensitive, file name first", () => {
+  assert.deepEqual(L.fuzzyMatch("mainjs", "mods/my-files/main.js").hits, [14, 15, 16, 17, 19, 20]);
+  assert.ok(L.fuzzyMatch("MAIN", "mods/my-files/main.js"));
+  assert.equal(L.fuzzyMatch("xyz", "mods/my-files/main.js"), null);
+  assert.equal(L.fuzzyMatch("nm", "main.js"), null); // order matters
+  assert.equal(L.fuzzyMatch("   ", "main.js"), null);
+});
+
+test("fuzzyMatch: every space-separated part must match", () => {
+  assert.deepEqual(L.fuzzyMatch("files main", "mods/my-files/main.js").hits, [8, 9, 10, 11, 12, 14, 15, 16, 17]);
+  assert.equal(L.fuzzyMatch("files zzz", "mods/my-files/main.js"), null);
+});
+
+test("fuzzyMatch scores: file name, consecutive letters, word starts", () => {
+  const s = (q, p) => L.fuzzyMatch(q, p).score;
+  assert.ok(s("main", "src/main.js") > s("main", "main/src/x.js"));
+  assert.ok(s("abc", "abc.txt") > s("abc", "axbxc.txt"));
+  assert.ok(s("fb", "FooBar.js") > s("fb", "fxxb.js"));
+});
+
+test("searchPaths: best first, limit and more", () => {
+  const paths = ["main/src/x.js", "src/main.js", "docs/readme.md", "a/main.js"];
+  const r = L.searchPaths(paths, "main", 2);
+  assert.deepEqual(r.results.map(x => x.path), ["a/main.js", "src/main.js"]);
+  assert.equal(r.more, true);
+  assert.deepEqual(L.searchPaths(paths, "readme", 200), { results: [{ path: "docs/readme.md", ...L.fuzzyMatch("readme", "docs/readme.md") }], more: false });
+  assert.deepEqual(L.searchPaths(paths, "zzz", 200), { results: [], more: false });
+});
+
+test("splitPath and segments", () => {
+  assert.deepEqual(L.splitPath("mods/my-files/main.js"), { dir: "mods/my-files", name: "main.js" });
+  assert.deepEqual(L.splitPath("README.md"), { dir: "", name: "README.md" });
+  assert.deepEqual(L.segments("main.js", [0, 1, 5]), [{ text: "ma", hit: true }, { text: "in.", hit: false }, { text: "j", hit: true }, { text: "s", hit: false }]);
+  assert.deepEqual(L.segments("ab", []), [{ text: "ab", hit: false }]);
+  assert.deepEqual(L.segments("", []), []);
+});
