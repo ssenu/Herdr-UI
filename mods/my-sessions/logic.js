@@ -187,7 +187,7 @@ export function sessionsCommand(prefixes, windows) {
   // Single backslashes only (one inside a bracket is literal): Git's sh on Windows halves doubled backslashes in arguments.
   const grab = (key, pick) => `grep -a -o -E '"${key}":"([^"\\]|[\\].)*"' | ${pick} -n 1 | sed 's/^"[A-Za-z]*"://'`;
   const script =
-    'base="$HOME/.claude/projects"; [ -d "$base" ] || exit 0; cd "$base" || exit 1; ' +
+    'LC_ALL=C; export LC_ALL; base="$HOME/.claude/projects"; [ -d "$base" ] || exit 0; cd "$base" || exit 1; ' +
     // "./" first: on Unix every storage name starts with "-", which head, tail and stat would read as an option.
     'for p in "$@"; do for f in "./$p"/*.jsonl "./$p"-*/*.jsonl; do [ -f "$f" ] || continue; ' +
     'm=$(stat -c %Y "$f" 2>/dev/null || stat -f %m "$f"); printf "%s\\t%s\\n" "$m" "$f"; done; done | ' +
