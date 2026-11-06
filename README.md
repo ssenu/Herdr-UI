@@ -1,7 +1,7 @@
 # Herdr-UI
 
 [Herdr](https://github.com/herdrdev/herdr) 데스크톱 앱을 더 편하게 쓰기 위한 mod 모음입니다.
-오른쪽 패널의 Files를 편집 가능한 패널로 바꾸고, GitHub 이슈·PR 패널과 MCP·스킬 목록 패널을 추가합니다.
+오른쪽 패널의 Files를 편집 가능한 패널로 바꾸고, GitHub 이슈·PR 패널, MCP·스킬 목록 패널, Claude 세션 목록 패널을 추가합니다.
 
 | mod | 하는 일 |
 |---|---|
@@ -10,7 +10,8 @@
 | `my-files-open` | 파일 행의 `⋯` 메뉴: 기본 프로그램 / VS Code / 탐색기에서 보기 / 경로 복사 |
 | `my-github` | 현재 저장소의 GitHub 이슈·PR 패널 (gh CLI 사용) |
 | `my-plugins` | 지금 폴더에서 Claude Code·Codex가 보는 MCP 서버와 스킬 목록 (읽기 전용) |
-| `my-tabs` | 기본 탭 바의 복제본. Files · Changes 옆에 GitHub · Plugin 버튼 추가 |
+| `my-sessions` | 지금 저장소의 Claude Code 세션 목록. 누르면 새 탭에서 다시 열기 |
+| `my-tabs` | 기본 탭 바의 복제본. Files · Changes 옆에 GitHub · Plugin · Session 버튼 추가 |
 
 ## 기능
 
@@ -58,6 +59,15 @@
 - 원격 스페이스에서는 그 머신의 설정을 읽습니다.
 - 패널이 보일 때와 폴더·에이전트가 바뀔 때 다시 읽습니다. ⟳ 로 바로 새로고침.
 
+### Sessions 패널 (`my-sessions`)
+
+- 탭 바의 **Session** 버튼으로 엽니다. 포커스된 칸의 저장소에서 시작한 Claude Code 세션을 최근 순으로 보여 줍니다(최대 100개).
+- **[전체]**: 저장소 루트와 하위 폴더, git worktree에서 시작한 세션. **[지금 폴더]**: 포커스된 칸의 폴더에서 시작한 세션만.
+- 행에는 세션 제목(직접 붙인 이름 → 자동 제목)과 `3시간 전 · main · mods/x`(시간 · 브랜치 · 폴더)가 보입니다.
+- 행을 누르면 **새 탭**이 세션 제목 이름으로 열리고, 그 세션의 시작 폴더에서 `claude -r <ID>` 가 실행됩니다.
+- 세션 파일의 앞뒤 일부만 읽어 제목·폴더·브랜치만 가져옵니다. 대화 내용은 읽어 오지 않습니다.
+- 원격 스페이스에서는 그 머신의 세션을 읽습니다. 패널이 보이는 동안 30초마다 다시 읽고, ⟳ 로 바로 새로고침합니다.
+
 ## 요구 사항
 
 - Herdr 앱 (0.1.12에서 확인). 설치 스크립트는 Windows(PowerShell)용입니다. 다른 OS는 [수동 설치](#수동-설치)를 보세요.
@@ -77,12 +87,13 @@ cd Herdr-UI
 
 설치 스크립트가 하는 일:
 
-1. `mods\` 의 여섯 mod를 `~\.config\herdr-app\mods\` 에 복사합니다.
+1. `mods\` 의 일곱 mod를 `~\.config\herdr-app\mods\` 에 복사합니다.
 2. 레이아웃 `my-layout` 을 고칩니다. 없으면 기본 레이아웃 `main` 을 `my-layout` 으로 복제한 뒤 고칩니다.
    - Files 칸: `files` → `my-files`
    - 탭 바: `tabs` → `my-tabs`
    - 오른쪽 패널(`panel-body`)에 `github` 칸(`my-github`) 추가
    - 오른쪽 패널(`panel-body`)에 `plugins` 칸(`my-plugins`) 추가
+   - 오른쪽 패널(`panel-body`)에 `sessions` 칸(`my-sessions`) 추가
    - 고치기 전 파일은 `my-layout.json.bak-<시각>` 으로 백업합니다.
 3. 지금 레이아웃이 `my-layout` 이 아니면 그 레이아웃으로 바꿉니다.
 
@@ -98,14 +109,15 @@ mod와 레이아웃은 저장하면 바로 적용되므로 앱을 다시 켤 필
 
 ## 수동 설치
 
-1. `mods/` 안의 여섯 폴더를 `~/.config/herdr-app/mods/` 에 복사합니다.
+1. `mods/` 안의 일곱 폴더를 `~/.config/herdr-app/mods/` 에 복사합니다.
 2. 쓰는 레이아웃(`~/.config/herdr-app/layouts/<이름>.json`, 기본 레이아웃이면 먼저 `herdr-app do layout.clone '{"name":"main","as":"my-layout"}'`)에서:
    - `"mod": "files"` → `"mod": "my-files"`
    - `"mod": "tabs"` → `"mod": "my-tabs"`
    - `"id": "panel-body"` 의 `children` 끝에 추가:
      ```json
      { "id": "github", "type": "block", "content": { "mod": "my-github" } },
-     { "id": "plugins", "type": "block", "content": { "mod": "my-plugins" } }
+     { "id": "plugins", "type": "block", "content": { "mod": "my-plugins" } },
+     { "id": "sessions", "type": "block", "content": { "mod": "my-sessions" } }
      ```
 3. `herdr-app status` 의 `errors` 가 비어 있으면 됩니다.
 
@@ -120,8 +132,8 @@ mod는 덮어쓰고, 레이아웃은 이미 연결돼 있으면 그대로 둡니
 
 ## 제거
 
-1. 백업(`layouts\my-layout.json.bak-<시각>`)을 `my-layout.json` 으로 되돌리거나, 위 네 가지를 원래대로(`files`, `tabs`, github·plugins 칸 삭제) 고칩니다.
-2. `~\.config\herdr-app\mods\` 에서 `my-files`, `my-files-drag`, `my-files-open`, `my-github`, `my-plugins`, `my-tabs` 폴더를 지웁니다.
+1. 백업(`layouts\my-layout.json.bak-<시각>`)을 `my-layout.json` 으로 되돌리거나, 위 다섯 가지를 원래대로(`files`, `tabs`, github·plugins·sessions 칸 삭제) 고칩니다.
+2. `~\.config\herdr-app\mods\` 에서 `my-files`, `my-files-drag`, `my-files-open`, `my-github`, `my-plugins`, `my-sessions`, `my-tabs` 폴더를 지웁니다.
 
 ## 알려진 한계
 
@@ -133,6 +145,7 @@ mod는 덮어쓰고, 레이아웃은 이미 연결돼 있으면 그대로 둡니
 - 탭 바를 `my-tabs` 로 바꾸면 스페이스별로 기억하던 패널 선택이 한 번 초기화됩니다.
 - Plugins 패널은 읽기 전용입니다(켜기/끄기·삭제는 각 에이전트에서: Claude는 `/mcp`, `claude mcp remove`). Codex 시스템 스킬과 `/etc/codex/skills` 는 보이지 않습니다. 설정을 바꾼 뒤 열린 세션에 반영되는지는 에이전트에 달려 있습니다.
 - Plugins 패널은 Claude 플러그인이 제공하는 MCP 서버와 꺼 둔 플러그인/서버 상태(`enabledPlugins`, `disabledMcpServers`)를 반영하지 않습니다. Codex의 `CODEX_HOME`은 무시하고 `~/.codex`를 읽으며, 원격 스페이스는 유닉스(sh) 머신으로 가정합니다.
+- Sessions 패널은 이미 열려 있는 세션을 표시하지 못합니다(에이전트 정보에 세션 ID가 없음). 같은 세션을 두 탭에서 쓰지 않도록 조심하세요. Claude Code의 내부 파일 형식에 기대므로, 형식이 바뀌면 제목이 안 보일 수 있습니다. Codex 세션은 보이지 않습니다.
 
 ## 개발
 
