@@ -77,7 +77,7 @@ export function sessionLines(stdout) {
     const f = line.split("\t");
     if (f[0] !== "FILE" || f.length < 8) continue;
     const cwd = jsonToken(f[4]), mtime = Number(f[3]);
-    if (!cwd || !Number.isFinite(mtime)) continue;
+    if (!cwd || f[3].trim() === "" || !Number.isFinite(mtime)) continue;
     rows.push({ dir: f[1], id: f[2], mtime, cwd, customTitle: jsonToken(f[5]), aiTitle: jsonToken(f[6]), branch: jsonToken(f[7]) });
   }
   return rows;
@@ -93,7 +93,12 @@ export function toSessions(rows) {
     mtime: r.mtime,
     branch: r.branch,
     folder: startFolder(r.dir, r.cwd),
-  }));
+  })).filter(s => usableFolder(s.folder));
+}
+
+/** The folder goes to tab.new: it must be absolute and free of ".." segments. */
+function usableFolder(p) {
+  return /^([A-Za-z]:[\\/]|\/|\\\\)/.test(p) && !p.split(/[\\/]+/).includes("..");
 }
 
 /** "all": started in a worktree of this repository or below. "here": started in the focused folder. */

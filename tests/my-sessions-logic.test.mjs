@@ -107,6 +107,15 @@ test("tabTitle and emptyText", () => {
   assert.equal(L.emptyText("here"), "이 폴더에서 시작한 세션이 없어요");
 });
 
+test("toSessions drops a session whose start folder is relative or has a .. segment", () => {
+  const base = { dir: "-other", id: U1, mtime: 5, branch: "" };
+  assert.deepEqual(L.toSessions([{ ...base, cwd: "/r/app/../x" }, { ...base, cwd: "relative/x" }]), []);
+});
+
+test("sessionLines drops a line with an empty time", () => {
+  assert.deepEqual(L.sessionLines(["FILE", "d", U1, "", '"/r"', "", "", ""].join("\t")), []);
+});
+
 test("psQuote doubles straight and typographic single quotes", () => {
   assert.equal(L.psQuote("it's"), "'it''s'");
   assert.equal(L.psQuote("‘a’b‚c‛"), "'‘‘a’’b‚‚c‛‛'");
