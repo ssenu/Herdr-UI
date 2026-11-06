@@ -38,8 +38,8 @@ if (-not (Test-Path $file)) {
     Write-Host "레이아웃 '$Layout' 이 없고 herdr-app 명령도 찾을 수 없어요. Herdr에서 레이아웃을 복제한 뒤 다시 실행하세요." -ForegroundColor Red
     exit 1
   }
-  $json = '{"name":"main","as":"' + $Layout + '"}'
-  & herdr-app do layout.clone $json | Out-Null
+  # Flags, not a JSON argument: Windows PowerShell 5.1 strips the quotes from JSON passed to a program.
+  & herdr-app do layout.clone --name main --as $Layout | Out-Null
   for ($i = 0; $i -lt 20 -and -not (Test-Path $file); $i++) { Start-Sleep -Milliseconds 250 }
   if (-not (Test-Path $file)) { Write-Host "레이아웃 복제에 실패했어요: $file" -ForegroundColor Red; exit 1 }
   Write-Host "기본 레이아웃 main 을 '$Layout' 으로 복제했어요." -ForegroundColor Green
@@ -98,8 +98,7 @@ if (Get-Command herdr-app -ErrorAction SilentlyContinue) {
     catch { if ($text -cmatch '"layout"\s*:\s*"([^"]*)"') { $current = $Matches[1] } }
   }
   if ($current -ne $Layout) {
-    $json = '{"name":"' + $Layout + '"}'
-    & herdr-app do layout.switch $json | Out-Null
+    & herdr-app do layout.switch --name $Layout | Out-Null
     Write-Host "레이아웃을 '$Layout' 으로 바꿨어요." -ForegroundColor Green
   }
 }
