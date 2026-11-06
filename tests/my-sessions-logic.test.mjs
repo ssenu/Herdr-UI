@@ -106,3 +106,83 @@ test("tabTitle and emptyText", () => {
   assert.equal(L.emptyText("all"), "이 저장소에 세션이 없어요");
   assert.equal(L.emptyText("here"), "이 폴더에서 시작한 세션이 없어요");
 });
+
+test("psQuote doubles straight and typographic single quotes", () => {
+  assert.equal(L.psQuote("it's"), "'it''s'");
+  assert.equal(L.psQuote("‘a’b‚c‛"), "'‘‘a’’b‚‚c‛‛'");
+});
+
+test("sessionsCommand: prefixes go in as arguments or quoted literals", () => {
+  const sh = L.sessionsCommand(["-r-app", "-r-wt"], false);
+  assert.equal(sh.command, "sh");
+  assert.equal(sh.args[0], "-c");
+  assert.deepEqual(sh.args.slice(2), ["sessions", "-r-app", "-r-wt"]);
+  assert.ok(sh.args[1].includes("head -n 300"));
+  const ps = L.sessionsCommand(["C--r-app"], true);
+  assert.equal(ps.command, "powershell");
+  assert.ok(ps.args[2].includes("@('C--r-app')"));
+  assert.ok(ps.args[2].includes("-First 300"));
+});
+
+// A fake home holding fake session files; nothing here touches the real ~/.claude.
+function sessionsFixture() {
+  const home = pjoin(mkdtempSync(pjoin(tmpdir(), "sessions-")), "a&b it's it’s 홈");
+  const projects = pjoin(home, ".claude", "projects");
+  const put = (dir, id, records) => {
+    mkdirSync(pjoin(projects, dir), { recursive: true });
+    writeFileSync(pjoin(projects, dir, `${id}.jsonl`), records.map(r => (typeof r === "string" ? r : JSON.stringify(r))).join("\n") + "\n");
+  };
+  const pad = JSON.stringify({ type: "pad", text: "x".repeat(300000) });
+  const id = n => `${String(n).repeat(8)}-${String(n).repeat(4)}-4${String(n).repeat(3)}-8${String(n).repeat(3)}-${String(n).repeat(12)}`;
+  // Text quoting "cwd":"…" inside a message is escaped in the file, so it must not count as the cwd.
+  put("C--r-app", id(1), [
+    { type: "user", message: '"cwd":"C:\\fake" "aiTitle":"fake"' },
+    { type: "user", cwd: "C:\\r\\app\\sub", gitBranch: "old" },
+    { type: "ai-title", aiTitle: "첫 제목" },
+    { type: "ai-title", aiTitle: '나중 "제목"' },
+    { type: "user", cwd: "C:\\r\\app\\sub", gitBranch: "main" },
+  ]);
+  put("C--r-app", id(2), [{ cwd: "C:\\r\\app" }, { type: "custom-title", customTitle: "내 이름" }, { type: "ai-title", aiTitle: "자동" }]);
+  put("C--r-app", id(3), [{ type: "mode", mode: "default" }]); // empty session: no cwd
+  put("C--r-app", id(4), [pad, { cwd: "C:\\r\\app" }]); // cwd past the first 256 KB: treated as empty
+  put("C--r-app", id(5), [{ cwd: "C:\\r\\app" }, { type: "ai-title", aiTitle: "오래된 제목" }, pad, { type: "x" }]); // title before the last 64 KB is not read
+  mkdirSync(pjoin(projects, "C--r-app", id(1)), { recursive: true });
+  writeFileSync(pjoin(projects, "C--r-app", id(1), `${id(9)}.jsonl`), JSON.stringify({ cwd: "C:\\r\\app" }) + "\n"); // a nested file is not a session
+  put("C--r-app-old", id(6), [{ cwd: "C:\\r\\app-old" }]); // name matches; main.js filters it by path
+  put("C--r-app2", id(7), [{ cwd: "C:\\r\\app2" }]); // no dash after the prefix: not a candidate
+  put("C--other", id(8), [{ cwd: "C:\\other" }]);
+  put("-r-unix", id(9), [{ cwd: "/r/unix" }]); // Unix storage names start with a dash
+  return { home, id };
+}
+for (const windows of [true, false]) {
+  const shell = windows ? "powershell" : "sh";
+  const runs = !spawnSync(shell, windows ? ["-NoProfile", "-Command", "exit 0"] : ["-c", "exit 0"]).error;
+  test(`sessionsCommand runs (${shell})`, { skip: !runs || (windows && process.platform !== "win32") }, () => {
+    const { home, id } = sessionsFixture();
+    const env = { ...process.env, USERPROFILE: home, HOME: windows ? home : home.replaceAll("\\", "/") };
+    const c = L.sessionsCommand(["C--r-app"], windows);
+    const r = spawnSync(c.command, c.args, { encoding: "utf8", env });
+    assert.equal(r.status, 0, r.stderr);
+    const rows = L.sessionLines(r.stdout);
+    assert.deepEqual(rows.map(x => x.id).sort(), [id(1), id(2), id(5), id(6)]);
+    const by = n => rows.find(x => x.id === id(n));
+    assert.equal(by(1).dir, "C--r-app");
+    assert.equal(by(1).cwd, "C:\\r\\app\\sub");
+    assert.equal(by(1).aiTitle, '나중 "제목"');
+    assert.equal(by(1).branch, "main");
+    assert.ok(by(1).mtime > 1600000000);
+    assert.equal(by(2).customTitle, "내 이름");
+    assert.equal(by(2).aiTitle, "자동");
+    assert.equal(by(5).aiTitle, "");
+    assert.equal(by(6).dir, "C--r-app-old");
+    const unix = L.sessionsCommand(["-r-unix"], windows);
+    const dash = spawnSync(unix.command, unix.args, { encoding: "utf8", env });
+    assert.equal(dash.status, 0, dash.stderr);
+    assert.deepEqual(L.sessionLines(dash.stdout).map(x => [x.dir, x.id, x.cwd]), [["-r-unix", id(9), "/r/unix"]]);
+    // No projects folder: nothing, and no failure.
+    const empty = { ...env, USERPROFILE: pjoin(home, "none"), HOME: windows ? pjoin(home, "none") : pjoin(home, "none").replaceAll("\\", "/") };
+    const none = spawnSync(c.command, c.args, { encoding: "utf8", env: empty });
+    assert.equal(none.status, 0, none.stderr);
+    assert.deepEqual(L.sessionLines(none.stdout), []);
+  });
+}

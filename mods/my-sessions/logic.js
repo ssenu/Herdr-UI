@@ -139,3 +139,59 @@ export function tabTitle(title) {
 export function emptyText(scope) {
   return scope === "here" ? "이 폴더에서 시작한 세션이 없어요" : "이 저장소에 세션이 없어요";
 }
+
+/** A PowerShell single-quoted literal. PowerShell also reads typographic single quotes as quotes. */
+export function psQuote(s) {
+  return "'" + String(s).replace(/['‘’‚‛]/g, m => m + m) + "'";
+}
+
+const HEAD_BYTES = 262144, TAIL_BYTES = 65536, MAX_FILES = 300;
+
+/**
+ * One command printing a FILE line per session under ~/.claude/projects/<prefix or prefix-*>:
+ * only the first cwd, the last titles and the last branch, read from the file's two ends.
+ * Files without a cwd in the first part are skipped. See sessionLines for the format.
+ */
+export function sessionsCommand(prefixes, windows) {
+  if (windows) {
+    const token = key => `'"${key}":("(?:[^"\\\\]|\\\\.)*")'`;
+    const script = [
+      "[Console]::OutputEncoding = [System.Text.UTF8Encoding]::new($false)",
+      "$base = Join-Path $env:USERPROFILE '.claude\\projects'",
+      "if (-not [IO.Directory]::Exists($base)) { exit 0 }",
+      `$prefixes = @(${prefixes.map(psQuote).join(", ")})`,
+      "$files = @(foreach ($d in [IO.Directory]::GetDirectories($base)) { $n = [IO.Path]::GetFileName($d); foreach ($p in $prefixes) { " +
+        "if ($n -ieq $p -or $n.StartsWith($p + '-', [StringComparison]::OrdinalIgnoreCase)) { ([IO.DirectoryInfo]$d).GetFiles('*.jsonl'); break } } })",
+      `$files = @($files | Sort-Object LastWriteTimeUtc -Descending | Select-Object -First ${MAX_FILES})`,
+      "$utf8 = [Text.UTF8Encoding]::new($false)",
+      "function Last($text, $pattern) { $m = [regex]::Matches($text, $pattern); if ($m.Count) { $m[$m.Count - 1].Groups[1].Value } else { '' } }",
+      "foreach ($f in $files) { try { " +
+        "$s = [IO.File]::Open($f.FullName, 'Open', 'Read', 'ReadWrite, Delete'); " +
+        "try { $len = $s.Length; " +
+        `$b = New-Object byte[] ([Math]::Min($len, ${HEAD_BYTES})); [void]$s.Read($b, 0, $b.Length); $head = $utf8.GetString($b); ` +
+        `$n = [Math]::Min($len, ${TAIL_BYTES}); [void]$s.Seek(-$n, 'End'); $b = New-Object byte[] $n; [void]$s.Read($b, 0, $n); $tail = $utf8.GetString($b) ` +
+        "} finally { $s.Close() }; " +
+        `$m = [regex]::Match($head, ${token("cwd")}); if (-not $m.Success) { continue }; ` +
+        "$t = [DateTimeOffset]::new($f.LastWriteTimeUtc).ToUnixTimeSeconds(); " +
+        `$custom = Last $tail ${token("customTitle")}; $ai = Last $tail ${token("aiTitle")}; $branch = Last $tail ${token("gitBranch")}; ` +
+        "\"FILE`t$($f.Directory.Name)`t$($f.BaseName)`t$t`t$($m.Groups[1].Value)`t$custom`t$ai`t$branch\" " +
+        "} catch {} }",
+    ].join("; ");
+    return { command: "powershell", args: ["-NoProfile", "-Command", script] };
+  }
+  // Single backslashes only (one inside a bracket is literal): Git's sh on Windows halves doubled backslashes in arguments.
+  const grab = (key, pick) => `grep -a -o -E '"${key}":"([^"\\]|[\\].)*"' | ${pick} -n 1 | sed 's/^"[A-Za-z]*"://'`;
+  const script =
+    'base="$HOME/.claude/projects"; [ -d "$base" ] || exit 0; cd "$base" || exit 1; ' +
+    // "./" first: on Unix every storage name starts with "-", which head, tail and stat would read as an option.
+    'for p in "$@"; do for f in "./$p"/*.jsonl "./$p"-*/*.jsonl; do [ -f "$f" ] || continue; ' +
+    'm=$(stat -c %Y "$f" 2>/dev/null || stat -f %m "$f"); printf "%s\\t%s\\n" "$m" "$f"; done; done | ' +
+    `sort -u | sort -rn | head -n ${MAX_FILES} | while IFS="$(printf "\\t")" read -r m f; do ` +
+    `cwd=$(head -c ${HEAD_BYTES} "$f" | ${grab("cwd", "head")}); [ -n "$cwd" ] || continue; ` +
+    `custom=$(tail -c ${TAIL_BYTES} "$f" | ${grab("customTitle", "tail")}); ` +
+    `ai=$(tail -c ${TAIL_BYTES} "$f" | ${grab("aiTitle", "tail")}); ` +
+    `branch=$(tail -c ${TAIL_BYTES} "$f" | ${grab("gitBranch", "tail")}); ` +
+    'rest=${f#./}; dir=${rest%%/*}; id=${f##*/}; id=${id%.jsonl}; ' +
+    'printf "FILE\\t%s\\t%s\\t%s\\t%s\\t%s\\t%s\\t%s\\n" "$dir" "$id" "$m" "$cwd" "$custom" "$ai" "$branch"; done';
+  return { command: "sh", args: ["-c", script, "sessions", ...prefixes] };
+}
