@@ -3,7 +3,7 @@
 import { View, div } from "gpui-kit";
 import { v_flex, h_flex } from "gpui-base";
 import { spaces, panes, focused, exec, run, notify, theme, layout, window } from "herdr";
-import { encodeProject, worktreePaths, sessionLines, toSessions, pickSessions, isUnder, sessionMeta, tabTitle, emptyText, sessionsCommand } from "./logic.js";
+import { encodeProject, worktreePaths, sessionLines, toSessions, pickSessions, isUnder, sessionMeta, tabTitle, emptyText, sessionsCommand, runningSessionIds } from "./logic.js";
 
 const REFRESH_MS = 30000, SHOW_LIMIT = 100;
 
@@ -13,6 +13,9 @@ function location() {
   const on = f?.pane === null ? (f.terminal?.includes("/") ? f.terminal.split("/")[0] : null) : space?.machine ?? null;
   return { cwd: pane?.cwd || f?.cwd || space?.folder, on };
 }
+// Folders of the live Claude agents, one entry per agent: two in a folder count twice.
+// panes() is every pane in every tab, so this is the same set the Agents list shows.
+const liveFolders = () => panes().filter(p => p.app === "claude-code" && p.cwd).map(p => p.cwd);
 const key = () => JSON.stringify(location());
 const base = p => String(p ?? "").replace(/[\\/]+$/, "").split(/[\\/]/).pop() || String(p ?? "");
 function find(node, id) {
@@ -94,6 +97,7 @@ export default class Sessions extends View {
     this.wasShown = shown;
     const t = theme(), c = this.context, d = this.data, now = Date.now();
     const picked = d ? pickSessions(d.sessions, this.scope, { worktrees: d.worktrees, cwd: c.cwd }, SHOW_LIMIT) : { items: [], more: false };
+    const running = d ? runningSessionIds(d.sessions, liveFolders()) : new Set();
     const name = d?.root ?? c?.cwd;
     const where = name ? (c?.on ? `${c.on}:${base(name)}` : base(name)) : "";
     const message = !c?.cwd ? "폴더가 없어요" : !d ? (this.error || "불러오는 중…") : emptyText(this.scope);
@@ -114,7 +118,10 @@ export default class Sessions extends View {
         .when(Boolean(this.error && d), el => el.child(div().px(8).py(4).text_size(12).text_color(t.ansi1).child(`⚠ ${this.error}`)))
         .children(picked.items.map(s => v_flex().id(`session-${s.id}`).flex_none().px(8).py(6).gap(3).rounded(7).cursor_pointer().hover(st => st.bg(t.hover))
           .on_click(e => { if (e.click_count === 1) this.open(s); })
-          .child(div().min_w(0).truncate().child(s.title))
+          .child(h_flex().min_w(0).gap(5).items_center()
+            .child(div().min_w(0).truncate().child(s.title))
+            .when(running.has(s.id), el => el.child(div().flex_none().text_size(10)
+              .text_color(t.working ?? t.dim).child("● 실행 중"))))
           .child(div().min_w(0).truncate().text_size(11).text_color(t.dim).child(sessionMeta(s, d.root, now)))))
         .when(picked.more, el => el.child(div().p(8).text_size(11).text_color(t.dim).child("최근 100개만 보여 줘요")))
         .when(picked.items.length === 0, el => el.child(div().p(8).text_size(12).text_color(t.dim).child(message))));

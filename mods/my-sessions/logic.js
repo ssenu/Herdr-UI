@@ -108,6 +108,33 @@ export function inScope(session, scope, { worktrees, cwd }) {
   return scope === "here" ? samePath(session.folder, cwd) : worktrees.some(w => isUnder(session.folder, w));
 }
 
+/**
+ * Session ids a live agent is probably using, so a row can say so before it is opened.
+ *
+ * There is no session id in the mod API, so this goes by folder: `claude -c` continues the
+ * newest session of its folder and keeps writing to that same file, so the newest N sessions
+ * of a folder with N live agents are the ones in use. Wrong when a live session sits idle
+ * while a newer session in the same folder ends: then the ended one is marked instead.
+ *
+ * liveFolders: one entry per live agent (`panes()` cwd), so duplicates mean two agents there.
+ */
+export function runningSessionIds(sessions, liveFolders) {
+  const need = new Map();
+  for (const f of liveFolders ?? []) {
+    if (!f) continue;
+    const k = normPath(f);
+    need.set(k, (need.get(k) ?? 0) + 1);
+  }
+  const ids = new Set();
+  if (need.size === 0) return ids;
+  // Same order as pickSessions, so the row marked is the one listed first.
+  for (const s of [...sessions].sort((a, b) => b.mtime - a.mtime || (a.id < b.id ? -1 : 1))) {
+    const k = normPath(s.folder), left = need.get(k) ?? 0;
+    if (left > 0) { ids.add(s.id); need.set(k, left - 1); }
+  }
+  return ids;
+}
+
 /** Sessions in scope, newest first, at most `limit`. */
 export function pickSessions(sessions, scope, ctx, limit) {
   const all = sessions.filter(s => inScope(s, scope, ctx)).sort((a, b) => b.mtime - a.mtime || (a.id < b.id ? -1 : 1));

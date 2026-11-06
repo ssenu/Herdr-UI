@@ -201,3 +201,42 @@ for (const windows of [true, false]) {
     assert.deepEqual(L.sessionLines(none.stdout), []);
   });
 }
+
+// ── runningSessionIds: 살아 있는 에이전트가 쓰고 있을 세션 표시 ─────────────
+
+const S = (id, folder, mtime) => ({ id, folder, mtime });
+
+test("runningSessionIds: 에이전트가 있는 폴더의 최신 세션을 표시한다", () => {
+  const sessions = [S(U1, "/a", 200), S(U2, "/a", 100)];
+  const ids = L.runningSessionIds(sessions, ["/a"]);
+  assert.deepEqual([...ids], [U1]);
+});
+
+test("runningSessionIds: 같은 폴더에 에이전트가 둘이면 최신 둘을 표시한다", () => {
+  const U3 = "33333333-3333-4333-8333-333333333333";
+  const sessions = [S(U1, "/a", 300), S(U2, "/a", 200), S(U3, "/a", 100)];
+  const ids = L.runningSessionIds(sessions, ["/a", "/a"]);
+  assert.deepEqual([...ids].sort(), [U1, U2].sort());
+});
+
+test("runningSessionIds: 에이전트가 없는 폴더는 표시하지 않는다", () => {
+  const sessions = [S(U1, "/a", 200), S(U2, "/b", 100)];
+  assert.deepEqual([...L.runningSessionIds(sessions, ["/b"])], [U2]);
+  assert.deepEqual([...L.runningSessionIds(sessions, [])], []);
+});
+
+test("runningSessionIds: 경로 표기가 달라도 같은 폴더로 본다", () => {
+  const sessions = [S(U1, "/a/b", 100)];
+  assert.deepEqual([...L.runningSessionIds(sessions, ["/a/b/"])], [U1]);
+  assert.deepEqual([...L.runningSessionIds(sessions, ["\\a\\b"])], [U1]);
+});
+
+test("runningSessionIds: cwd 가 없는 칸은 세지 않는다", () => {
+  const sessions = [S(U1, "/a", 100)];
+  assert.deepEqual([...L.runningSessionIds(sessions, [null, undefined, ""])], []);
+});
+
+test("runningSessionIds: mtime 이 같으면 id 로 갈라 한 건만 고른다", () => {
+  const sessions = [S(U2, "/a", 100), S(U1, "/a", 100)];
+  assert.deepEqual([...L.runningSessionIds(sessions, ["/a"])], [U1]);
+});
