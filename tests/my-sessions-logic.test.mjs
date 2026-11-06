@@ -107,6 +107,12 @@ test("tabTitle and emptyText", () => {
   assert.equal(L.emptyText("here"), "이 폴더에서 시작한 세션이 없어요");
 });
 
+test("toSessions: a blank customTitle falls through to aiTitle, then the placeholder", () => {
+  const base = { dir: "-r-app", id: U1, mtime: 5, cwd: "/r/app", branch: "" };
+  assert.equal(L.toSessions([{ ...base, customTitle: "  \n ", aiTitle: "자동" }])[0].title, "자동");
+  assert.equal(L.toSessions([{ ...base, customTitle: " ", aiTitle: " \t" }])[0].title, "(제목 없음)");
+});
+
 test("toSessions drops a session whose start folder is relative or has a .. segment", () => {
   const base = { dir: "-other", id: U1, mtime: 5, branch: "" };
   assert.deepEqual(L.toSessions([{ ...base, cwd: "/r/app/../x" }, { ...base, cwd: "relative/x" }]), []);

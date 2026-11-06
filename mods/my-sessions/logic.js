@@ -85,11 +85,13 @@ export function sessionLines(stdout) {
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
+const clean = t => String(t ?? "").replace(/\s+/g, " ").trim();
+
 /** Rows → sessions to show. The id goes into a command line, so only real UUIDs pass. */
 export function toSessions(rows) {
   return rows.filter(r => UUID.test(r.id)).map(r => ({
     id: r.id,
-    title: (r.customTitle || r.aiTitle || "(제목 없음)").replace(/\s+/g, " ").trim(),
+    title: clean(r.customTitle) || clean(r.aiTitle) || "(제목 없음)",
     mtime: r.mtime,
     branch: r.branch,
     folder: startFolder(r.dir, r.cwd),

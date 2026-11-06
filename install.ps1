@@ -99,7 +99,9 @@ if (Get-Command herdr-app -ErrorAction SilentlyContinue) {
   }
   if ($current -ne $Layout) {
     & herdr-app do layout.switch --name $Layout | Out-Null
-    Write-Host "레이아웃을 '$Layout' 으로 바꿨어요." -ForegroundColor Green
+    if ($LASTEXITCODE -eq 0) { Write-Host "레이아웃을 '$Layout' 으로 바꿨어요." -ForegroundColor Green }
+    else { Write-Host "레이아웃을 '$Layout' 으로 바꾸지 못했어요. Herdr에서 직접 골라 주세요." -ForegroundColor Yellow }
   }
 }
 Write-Host "완료. 탭 바에 Files · Changes · GitHub · Plugin · Session 버튼이 보이면 성공이에요."
+exit 0

@@ -3,7 +3,7 @@
 import { View, div } from "gpui-kit";
 import { v_flex, h_flex } from "gpui-base";
 import { spaces, panes, focused, exec, run, notify, theme, layout, window } from "herdr";
-import { encodeProject, worktreePaths, sessionLines, toSessions, pickSessions, sessionMeta, tabTitle, emptyText, sessionsCommand } from "./logic.js";
+import { encodeProject, worktreePaths, sessionLines, toSessions, pickSessions, isUnder, sessionMeta, tabTitle, emptyText, sessionsCommand } from "./logic.js";
 
 const REFRESH_MS = 30000, SHOW_LIMIT = 100;
 
@@ -56,8 +56,12 @@ export default class Sessions extends View {
     const next = key();
     if (next !== this.context?.key) {
       const loc = location();
+      // Same machine and still inside a known worktree: keep the list instead of blanking it.
+      const keep = Boolean(this.data && this.context && this.context.on === loc.on && loc.cwd
+        && this.data.worktrees.some(w => isUnder(loc.cwd, w)));
       this.context = { key: next, cwd: loc.cwd, on: loc.on };
-      this.data = null; this.error = null; this.loading = false; this.again = false;
+      if (!keep) this.data = null;
+      this.error = null; this.loading = false; this.again = false;
     }
     if (!this.context.cwd) return;
     if (this.loading) { this.again = true; return; }
@@ -109,7 +113,7 @@ export default class Sessions extends View {
       .child(v_flex().id("sessions-list").flex_1().min_h(0).overflow_y_scrollbar().p(6)
         .when(Boolean(this.error && d), el => el.child(div().px(8).py(4).text_size(12).text_color(t.ansi1).child(`⚠ ${this.error}`)))
         .children(picked.items.map(s => v_flex().id(`session-${s.id}`).flex_none().px(8).py(6).gap(3).rounded(7).cursor_pointer().hover(st => st.bg(t.hover))
-          .on_click(() => this.open(s))
+          .on_click(e => { if (e.click_count === 1) this.open(s); })
           .child(div().min_w(0).truncate().child(s.title))
           .child(div().min_w(0).truncate().text_size(11).text_color(t.dim).child(sessionMeta(s, d.root, now)))))
         .when(picked.more, el => el.child(div().p(8).text_size(11).text_color(t.dim).child("최근 100개만 보여 줘요")))
