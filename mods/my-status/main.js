@@ -6,7 +6,7 @@ import { metricsCommand, parseMetrics, emptyHistory, pushHistory, failStep, summ
 import { usageCommands, parseDaily, parseBlock, usageSummary, usageDash } from "./usage.js";
 
 const READ_MS = 5000, HOVER_MS = 300, BAR_AREA = 28, DASH_WIDTH = 300, DASH_KEY = "my-status.dash";
-const USAGE_READ_MS = 300000, USAGE_TICK_MS = 60000, USAGE_DASH = { width: 300, height: 230 }, USAGE_KEY = "my-usage.dash";
+const USAGE_READ_MS = 300000, USAGE_TICK_MS = 60000, USAGE_DASH = { width: 300, height: 244 }, USAGE_KEY = "my-usage.dash";
 
 export default class MyStatus extends View {
   init(_props, cx) {
@@ -52,13 +52,14 @@ export default class MyStatus extends View {
           return r.code === 0 ? parse(r.stdout) : null;
         } catch { return null; }
       };
-      const c = usageCommands(Date.now());
-      const daily = await one(c.daily, parseDaily), block = await one(c.blocks, parseBlock);
-      if (daily) this.usage = { ...this.usage, days: daily.days };
-      if (block) this.usage = { ...this.usage, block };
-      if (daily && block) this.refreshed = Date.now();
-      this.syncUsage();
-      this.usageReading = false;
+      try {
+        const c = usageCommands(Date.now());
+        const daily = await one(c.daily, parseDaily), block = await one(c.blocks, parseBlock);
+        if (daily) this.usage = { ...this.usage, days: daily.days };
+        if (block) this.usage = { ...this.usage, block };
+        if (daily && block) this.refreshed = Date.now();
+        this.syncUsage();
+      } catch {} finally { this.usageReading = false; } // never stuck: the next tick reads again
       cx.notify();
     });
   }
@@ -71,6 +72,7 @@ export default class MyStatus extends View {
     if (!this.usageHovered || !this.usageRipe || this.usageOverlay || !this.origin || !this.usageBox?.width || this.usageBox.x === undefined) return;
     const at = dashAnchor({ x: this.usageBox.x, y: this.origin.y, width: this.usageBox.width }, USAGE_DASH);
     if (!at) return;
+    this.hovered = false; this.hoverSeq++; this.closeDash(); // one dashboard at a time, even if a leave event was missed
     const dash = usageDash(this.usage, Date.now(), this.refreshed);
     setShared(USAGE_KEY, dash);
     this.usageOverlay = openOverlay({ mod: "my-usage-dash", kind: "window", frame: "none", ...USAGE_DASH, at, props: { dash } });
@@ -104,6 +106,7 @@ export default class MyStatus extends View {
     const rows = this.rows(), size = { width: DASH_WIDTH, height: dashHeight(rows.length) };
     const at = dashAnchor({ ...this.origin, ...this.size }, size);
     if (!at) return;
+    this.usageHovered = false; this.usageSeq++; this.closeUsage();
     setShared(DASH_KEY, rows);
     this.dash = openOverlay({ mod: "my-status-dash", kind: "window", frame: "none", ...size, at, props: { rows } });
   }

@@ -125,7 +125,7 @@ cd Herdr-UI
 
 설치 스크립트가 하는 일:
 
-1. `mods\` 의 열두 mod를 `~\.config\herdr-app\mods\` 에 복사합니다.
+1. `mods\` 의 열세 mod를 `~\.config\herdr-app\mods\` 에 복사합니다.
 2. 레이아웃 `my-layout` 을 고칩니다. 없으면 기본 레이아웃 `main` 을 `my-layout` 으로 복제한 뒤 고칩니다.
    - Files 칸: `files` → `my-files`
    - 탭 바: `tabs` → `my-tabs`
@@ -150,7 +150,7 @@ mod와 레이아웃은 저장하면 바로 적용되므로 앱을 다시 켤 필
 
 ## 수동 설치
 
-1. `mods/` 안의 열두 폴더를 `~/.config/herdr-app/mods/` 에 복사합니다.
+1. `mods/` 안의 열세 폴더를 `~/.config/herdr-app/mods/` 에 복사합니다.
 2. 쓰는 레이아웃(`~/.config/herdr-app/layouts/<이름>.json`, 기본 레이아웃이면 먼저 `herdr-app do layout.clone --name main --as my-layout`)에서:
    - `"mod": "files"` → `"mod": "my-files"`
    - `"mod": "tabs"` → `"mod": "my-tabs"`
