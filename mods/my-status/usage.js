@@ -66,7 +66,7 @@ export function usageSummary(usage, now) {
   const parts = [];
   if (usage?.days) parts.push(`Today ${dollars(findDay(usage.days, dayKey(new Date(now)))?.cost ?? 0)}`);
   const block = activeBlock(usage, now);
-  if (block) parts.push(`Block ${dollars(block.cost)}`, `${leftText(block.end - now)} left`); // English like the rest of the bar
+  if (block) parts.push(`5h ${dollars(block.cost)}`, `${leftText(block.end - now)} left`); // English like the rest of the bar
   return parts.length ? parts.join(" · ") : null;
 }
 

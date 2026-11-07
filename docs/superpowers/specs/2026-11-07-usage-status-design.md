@@ -15,7 +15,7 @@
 ## 하단 바 (`my-status`)
 
 ```
-Today $104 · Block $33 · 2h15m left   │ CPU 12%  RAM 48%  GPU 3%
+Today $104 · 5h $33 · 2h15m left   │ CPU 12%  RAM 48%  GPU 3%
 ```
 
 - 시스템 수치의 왼쪽. 마우스 영역은 `status-usage`로 따로 둔다. 두 대시보드가 동시에 뜨지 않는다.

@@ -54,7 +54,7 @@ test("parseBlock: no active block, and broken output", () => {
 const LEFT_2H15 = { cost: 33.2, start: NOW - 3600000, end: NOW + 8100000, projected: 95.27 };
 
 test("usageSummary: today, block and time left", () => {
-  assert.equal(U.usageSummary({ days: [day("2026-11-07", 104.3)], block: LEFT_2H15 }, NOW), "Today $104 · Block $33 · 2h15m left");
+  assert.equal(U.usageSummary({ days: [day("2026-11-07", 104.3)], block: LEFT_2H15 }, NOW), "Today $104 · 5h $33 · 2h15m left");
 });
 
 test("usageSummary: no active block or a finished one shows today only", () => {
@@ -65,7 +65,7 @@ test("usageSummary: no active block or a finished one shows today only", () => {
 
 test("usageSummary: no record today is zero, an unread half is left out", () => {
   assert.equal(U.usageSummary({ days: [day("2026-11-06", 5)], block: { none: true } }, NOW), "Today $0");
-  assert.equal(U.usageSummary({ block: LEFT_2H15 }, NOW), "Block $33 · 2h15m left");
+  assert.equal(U.usageSummary({ block: LEFT_2H15 }, NOW), "5h $33 · 2h15m left");
   assert.equal(U.usageSummary({ block: { none: true } }, NOW), null);
   assert.equal(U.usageSummary({}, NOW), null);
   assert.equal(U.usageSummary(null, NOW), null);
@@ -122,7 +122,7 @@ test("usageDash: how old the figures are", () => {
 
 test("time left: hours and minutes, rounded up", () => {
   const left = ms => U.usageSummary({ block: { cost: 1, start: NOW - 1, end: NOW + ms, projected: null } }, NOW);
-  assert.equal(left(45 * 60000), "Block $1 · 45m left");
-  assert.equal(left(3600000), "Block $1 · 1h0m left");
-  assert.equal(left(1000), "Block $1 · 1m left");
+  assert.equal(left(45 * 60000), "5h $1 · 45m left");
+  assert.equal(left(3600000), "5h $1 · 1h0m left");
+  assert.equal(left(1000), "5h $1 · 1m left");
 });
