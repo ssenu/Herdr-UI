@@ -1,7 +1,19 @@
 # Herdr-UI
 
 [Herdr](https://github.com/herdrdev/herdr) 데스크톱 앱을 더 편하게 쓰기 위한 mod 모음입니다.
-오른쪽 패널의 Files를 편집 가능한 패널로 바꾸고, GitHub 이슈·PR 패널, MCP·스킬 목록 패널, Claude 세션 목록 패널, 파일 뷰어 탭, 하단 바 시스템 모니터를 추가합니다.
+
+## 기능 한눈에
+
+- **Files 패널**: 파일을 바로 고치고 저장, `.md` 보기 모드, 이름으로 파일 찾기, 끌어서 경로 넣기, `⋯` 메뉴로 외부 프로그램 열기
+- **파일 뷰어 탭**: 터미널처럼 탭으로 여는 파일 보기·편집기. 저장 안 한 내용은 초안으로 보관
+- **GitHub 패널**: 지금 저장소의 이슈·PR 목록과 본문, 에이전트에게 작업 넘기기, 이슈 닫기·PR 머지
+- **Plugins 패널**: Claude Code·Codex가 지금 폴더에서 보는 MCP 서버와 스킬 목록
+- **Sessions 패널**: 지금 저장소의 Claude Code 세션 목록. 누르면 새 탭에서 다시 열기, 열려 있는 세션은 초록 점
+- **탭 바**: 패널 버튼(GitHub · Plugin · Session), `+` 메뉴의 파일 뷰어, 스페이스별로 기억하는 패널
+- **탭을 끌어 분할하기**: 탭을 화면 가장자리에 놓으면 분할, 옮긴 칸은 탭 바에 칩으로 남음
+- **하단 바**: 이 PC의 CPU·RAM·GPU와 ccusage 사용량(오늘 · 5시간 구간 · 남은 시간), 마우스를 올리면 작은 대시보드
+
+전부 설치해도 되고, [원하는 기능만 설치](#원하는-기능만-설치하기)할 수도 있습니다.
 
 | mod | 하는 일 |
 |---|---|
@@ -100,7 +112,7 @@
 
 ### 사용량 요약 (`my-status`)
 
-- 하단 바의 시스템 수치 왼쪽에 `Today $104 · 5h $33 · 2h15m left` 를 보여 줍니다. 활성 블록이 없으면 오늘 비용만 나옵니다. Windows에서만 표시합니다.
+- 하단 바의 시스템 수치 왼쪽에 `Today $104 · 5h $33 · 2h15m left` 를 보여 줍니다. `5h` 는 Claude Code 사용 기록을 5시간 단위로 묶은 지금 구간에서 쓴 금액이고, `left` 는 그 구간이 끝날 때까지 남은 시간입니다. 지금 구간이 없으면 오늘 비용만 나옵니다. Windows에서만 표시합니다.
 - [ccusage](https://github.com/ryoppippi/ccusage)를 앱을 켤 때와 그 뒤 5분마다 실행해 읽습니다. Node.js(`npx`)가 필요합니다.
 - 마우스를 올리면 현재 블록의 진행 막대와 예상 비용, 최근 7일 막대그래프, 오늘 모델별 비용, 이번 달 합계가 뜹니다.
 - 금액은 API 가격으로 계산한 **추정치**이며 구독 요금과 다릅니다. 일별 값은 ccusage가 찾은 모든 CLI의 합이고, 블록은 Claude Code만 있습니다. 원격 스페이스에서도 **이 PC**의 기록입니다.
@@ -113,6 +125,7 @@
 - Sessions 패널: 세션을 여는 머신에 Claude Code의 `claude` 명령이 있어야 합니다.
 - [nano로 열기]: 그 머신에 `nano`가 있어야 합니다. Windows에서는 Git for Windows에 들어 있습니다.
 - [VS Code로 열기]: `code` 명령이 PATH에 있어야 합니다(VS Code 설치 시 기본값).
+- 하단 바 사용량: Node.js(`npx`)가 있어야 합니다.
 
 ## 설치 (Windows)
 
@@ -148,6 +161,25 @@ cd Herdr-UI
 
 Herdr 기본 레이아웃(`main`, `terminals`, `win98`)은 직접 고칠 수 없어서 대상으로 줄 수 없습니다.
 mod와 레이아웃은 저장하면 바로 적용되므로 앱을 다시 켤 필요가 없습니다.
+
+## 원하는 기능만 설치하기
+
+`install.cmd` 는 전부 설치합니다. 일부만 쓰려면 아래 묶음 중 원하는 것만 [수동 설치](#수동-설치)처럼 넣으세요. mod끼리 서로 부르는 곳이 있어 묶음 단위로 넣어야 동작합니다.
+
+| 묶음 | 복사할 `mods/` 폴더 | 레이아웃에서 바꿀 곳 |
+|---|---|---|
+| **하단 바** (시스템 모니터 + 사용량) | `my-status`, `my-status-dash`, `my-usage-dash` | `"mod": "workspace-status"` → `"my-status"` |
+| **Files 패널** (+ 탭 바에 드롭해 여는 파일 뷰어) | `my-files`, `my-files-drag`, `my-files-open`, `my-viewer` | `"mod": "files"` → `"my-files"` |
+| **탭 바와 패널** (GitHub · Plugins · Sessions, `+` 파일 뷰어, 탭 끌어 분할) | `my-tabs`, `my-new-menu`, `my-tab-drag`, `my-github`, `my-plugins`, `my-sessions`, `my-viewer`, `my-files`, `my-files-drag`, `my-files-open` | `"mod": "tabs"` → `"my-tabs"`, `panel-body` 에 github · plugins · sessions 칸 추가 |
+
+- **하단 바**는 다른 묶음 없이 혼자 동작합니다.
+- **Files 패널**만 넣으면 기본 탭 바를 그대로 쓰므로 패널 버튼과 `+` 메뉴의 파일 뷰어는 없습니다. 파일을 탭 바(창 맨 위)에 끌어 놓으면 뷰어 탭이 열립니다.
+- **탭 바와 패널**이 한 묶음인 이유:
+  - GitHub · Plugin · Session 버튼은 `my-tabs` 에 있고, 버튼은 세 패널이 있다고 보고 항상 보입니다.
+  - `+` 메뉴(`my-new-menu`)와 탭 끌기(`my-tab-drag`)도 `my-tabs` 가 엽니다.
+  - 뷰어와 `+` 메뉴는 `my-files` 의 아이콘을, 패널의 `⋯` 메뉴와 끌기는 `my-files-open` · `my-files-drag` 를 씁니다. 그래서 `my-files` 폴더는 복사하되, 레이아웃의 Files 칸은 기본 `files` 로 둬도 됩니다.
+- 폴더를 손으로 복사할 때는 **Herdr를 끄고** 복사하거나, 각 폴더의 `mod.json` 을 먼저 넣으세요. 앱이 켜진 상태에서 `mod.json` 없는 새 mod 폴더가 생기면, 앱이 그것을 레이아웃에 칸으로 끼워 넣습니다.
+- 넣은 뒤 `herdr-app status` 의 `errors` 가 비어 있는지 확인하세요.
 
 ## 수동 설치
 
@@ -203,6 +235,8 @@ herdr-app check $env:USERPROFILE\.config\herdr-app\mods\my-files   # 설치된 m
 
 - `npm test` 는 `sh` 를 찾지 못하면 sh 실행 테스트를 건너뜁니다. Windows에서 전부 돌리려면 Git Bash에서 `node --test tests/*.test.mjs` 를 실행하세요.
 - 화면·herdr 호출은 각 mod의 `main.js`, 테스트 가능한 판단 로직은 `logic.js` 에 있습니다.
+- mod는 자기 폴더 밖의 파일을 import할 수 없어서, 여러 mod가 쓰는 파일(`where.js`, `viewer-open.js`, `my-viewer/files-logic.js`)은 복사본을 둡니다. 원본을 고치면 복사본도 같이 고쳐야 하고, 테스트가 같은지 확인합니다.
+- 새 mod 폴더를 만들 때는 `mod.json` 을 먼저 만드세요(위 [원하는 기능만 설치하기](#원하는-기능만-설치하기)의 이유). `install.ps1` 도 그 순서로 복사합니다.
 - `docs/superpowers/` 에 기능별 설계 문서와 구현 계획이 있습니다.
 - Windows에서 gpui는 Ctrl 단축키를 `"ctrl-s"` 로 보고합니다(문서의 `"cmd-s"` 가 아님).
 
