@@ -31,11 +31,11 @@
 ## 대시보드
 
 - 수치 위에 0.3초 머물면 `openOverlay({ mod: "my-status-dash", kind: "window", frame: "none", width: 300, height, at: { x, y }, props })`로 수치 바로 위에 연다. 벗어나면 닫는다. 0.3초 안에 벗어나면 열지 않는다.
-- 위치: 수치 영역 측정값으로 오른쪽 맞춤, 창 안으로 제한.
+- 위치: 하단 바 측정값으로 바 오른쪽 끝에 맞추고, 왼쪽·위로 창 밖에 나가지 않게 제한. (mod는 창 크기를 알 수 없고, 크기 측정은 루트에서만 확실하다.)
 - 내용: 제목 `시스템 · 이 PC`, CPU·RAM·GPU별 현재 값과 막대그래프(60칸), 바닥에 `최근 5분`. GPU를 못 읽으면 GPU 칸을 뺀다. 버튼 없음.
 - 막대: 고정 폭 `div` 나열. 90% 이상은 `t.blocked`, 빈 칸(값 없음)은 막대 없음.
 - 기록: `my-status`의 메모리에 항목별 최근 60개. 앱을 끄면 사라진다.
-- 데이터 전달: 열 때 props로 현재 기록을 주고, 열려 있는 동안만 `setShared("my-status.history", …)`로 갱신한다. 닫으면 `null`로 비운다(공유 값 변경은 모든 mod를 다시 그리므로 평소에는 보내지 않는다).
+- 데이터 전달: `my-status`가 그릴 행(`dashRows`)을 계산해, 열 때 props로 주고 열려 있는 동안만 `setShared("my-status.dash", rows)`로 갱신한다. 닫으면 `null`로 비운다(공유 값 변경은 모든 mod를 다시 그리므로 평소에는 보내지 않는다).
 - 첫 구현 단계에서 호버 열기·닫기를 시험한다. 오버레이가 포인터를 가로채 깜빡이는 등 안 되면 수치를 클릭해 열고 닫는 방식으로 바꾼다.
 
 ## 함수 (`mods/my-status/logic.js`, 순수)
@@ -46,9 +46,10 @@
 - `failStep(state, ok)`: 연속 실패 횟수와 숨김 여부.
 - `summaryParts(metrics, remote)`: 하단 바 항목 목록(`{ label, value, hot }`), `isHot(percent)`.
 - `barHeights(values, height)`: 값 → 막대 높이(값이 있으면 최소 1px, 없으면 0).
-- `dashAnchor(bounds, windowSize, size)`: 대시보드 위치.
+- `dashRows(metrics, history, barHeight)`, `dashHeight(rowCount)`: 대시보드가 그릴 행과 높이.
+- `dashAnchor(bounds, size)`: 대시보드 위치.
 
-`my-status-dash`는 `../my-status/logic.js`를 불러온다. mod 간 불러오기가 안 되면 쓰는 함수만 복사한다.
+`my-status-dash`는 받은 행만 그리므로 로직을 불러오지 않는다.
 
 ## 테스트
 
