@@ -10,6 +10,7 @@ test("copies stay identical: mods cannot import outside their own folder", () =>
   const open = readFileSync(file("my-viewer/viewer-open.js"), "utf8");
   assert.equal(readFileSync(file("my-files-drag/viewer-open.js"), "utf8"), open);
   assert.equal(readFileSync(file("my-new-menu/viewer-open.js"), "utf8"), open);
+  assert.equal(readFileSync(file("my-tabs/viewer-open.js"), "utf8"), open);
   assert.equal(readFileSync(file("my-viewer/files-logic.js"), "utf8"), readFileSync(file("my-files/logic.js"), "utf8"));
 });
 

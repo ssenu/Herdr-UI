@@ -60,3 +60,16 @@ export function dropLabel(zone, move) {
   if (move.blocked) return move.blocked;
   return zone ? `놓으면 ${NAMES[zone]}으로 분할` : "놓으면 취소";
 }
+
+export const SPLIT_KEY = "my-tabs.split";
+
+/** The record with this pane added, without panes that no longer exist. */
+export function addSplit(split, panes, pane, entry) {
+  const live = new Set(panes.map(p => p.pane));
+  return { ...Object.fromEntries(Object.entries(split ?? {}).filter(([id]) => live.has(id))), [pane]: entry };
+}
+
+/** A tab's name without the viewer's unsaved mark. */
+export function plainName(name) {
+  return String(name ?? "").replace(/^● /, "");
+}

@@ -1,6 +1,10 @@
 import { View, div, svg, image } from "gpui-kit";
 import { h_flex } from "gpui-base";
-import { spaces, panes, run, openOverlay, theme, window, shared, setShared, layout, settings } from "herdr";
+import { spaces, panes, run, openOverlay, theme, window, shared, setShared, layout, settings, notify } from "herdr";
+import { chipsFor, hostPanes, hostStatus, dropSplit, SPLIT_KEY } from "./logic.js";
+import { tabArgs, newToken } from "./viewer-open.js";
+
+const WAIT_MS = 2000, POLL_MS = 100, DRAFT_MS = 800; // a closed viewer writes its last draft in its final call, which the host caps at 250 ms
 
 function find(node, id) {
   if (node?.id === id) return node;
@@ -11,10 +15,19 @@ function find(node, id) {
   return null;
 }
 
+async function until(cx, test) {
+  for (let t = 0; t < WAIT_MS; t += POLL_MS) {
+    if (test()) return true;
+    await cx.sleep(POLL_MS);
+  }
+  return test();
+}
+
 export default class Tabs extends View {
   init() {
     this.pressed = null;
     this.panels = JSON.parse(localStorage.getItem("panels") ?? "{}");
+    this.busy = new Set();
   }
 
   // The side panel is remembered per space: switching shows that space's choice
@@ -52,6 +65,52 @@ export default class Tabs extends View {
     if (tab) openOverlay({ mod: "my-tab-drag", kind: "window", frame: "none", width: 1, height: 1, at: { x: 0, y: 0 }, props: { tab } });
   }
 
+  // Back to its own tab, same process. Parked but not placed is recovered as a tab, so it is never orphaned.
+  async toTab(chip, cx) {
+    const { terminal } = chip, shown = () => panes().find(p => p.terminal === terminal);
+    run("terminal.park", { terminal });
+    try {
+      if (!await until(cx, () => !shown())) throw new Error("터미널을 칸에서 떼지 못했어요");
+      run("terminal.keep", { terminal, place: "tab" });
+      if (!await until(cx, () => Boolean(shown()))) throw new Error("터미널이 새 탭에 나타나지 않았어요");
+    } catch (e) {
+      if (!shown()) { try { run("terminal.keep", { terminal, place: "tab" }); } catch { /* best effort */ } }
+      throw e;
+    }
+    const tab = shown().tab;
+    run("tab.rename", { id: tab, name: chip.name });
+    return tab;
+  }
+
+  // A viewer closes and reopens as a tab; its unsaved text comes back from the draft.
+  async viewerToTab(chip, cx, space) {
+    run("pane.close", { pane: chip.pane });
+    if (!await until(cx, () => !panes().some(p => p.pane === chip.pane))) throw new Error("칸을 닫지 못했어요");
+    await cx.sleep(DRAFT_MS);
+    run("tab.new", tabArgs({ path: chip.path, on: chip.on ?? null, root: null, space }, newToken(Date.now(), Math.random())));
+  }
+
+  // close: a terminal goes through its own tab so closing asks like any other tab. pane.close would kill it without asking.
+  chipAction(chip, close, space, cx) {
+    if (this.busy.has(chip.pane)) return;
+    this.busy.add(chip.pane);
+    cx.spawn(async cx => {
+      try {
+        if (chip.kind === "viewer") {
+          if (close) run("pane.close", { pane: chip.pane });
+          else await this.viewerToTab(chip, cx, space);
+        } else {
+          const tab = await this.toTab(chip, cx);
+          if (close) run("tab.close", { id: tab });
+        }
+        setShared(SPLIT_KEY, dropSplit(shared(SPLIT_KEY), panes(), chip.pane));
+      } catch (e) {
+        const where = chip.kind === "viewer" ? `파일 ${chip.path}` : `터미널 ${chip.terminal} (hc ls 로 찾을 수 있어요)`;
+        notify({ title: "칸을 옮기지 못했어요", body: `${e}\n${where}`, level: "error", timeout: 5000 });
+      } finally { this.busy.delete(chip.pane); cx.notify(); }
+    });
+  }
+
   // The bar's box in window coordinates, for a file dropped on it. Sent only when it changes:
   // a shared value re-renders every mod.
   measure() {
@@ -68,11 +127,27 @@ export default class Tabs extends View {
     const stop = (_e, cx) => cx.stop_propagation();
     const button = (id, label, action) => div().id(id).size(26).flex_none().flex().items_center().justify_center().rounded(6).text_color(t.dim).hover(s => s.bg(t.hover).text_color(t.foreground))
       .on_mouse_down("left", stop).on_click(action).child(label);
+    const split = shared(SPLIT_KEY), all = panes();
+    const chipEl = chip => {
+      const icon = (id, file, close) => div().id(`${id}-${chip.pane}`).flex_none().text_color(t.dim).hover(s => s.text_color(t.foreground)).on_mouse_down("left", stop)
+        .on_click((_e, cx) => { cx.stop_propagation(); this.chipAction(chip, close, space.id, cx); }).child(svg(file).size(12));
+      return h_flex().id(`chip-${chip.pane}`).h(29).px(8).gap(6).rounded(7).items_center().flex_none().text_size(12.8)
+        .border(1).border_color(chip.focused ? t.border : t.chrome).bg(chip.focused ? t.raised : t.chrome).text_color(chip.focused ? t.foreground : t.muted)
+        .hover(s => s.bg(t.hover)).on_mouse_down("left", stop)
+        .on_click(() => run("pane.focus", { pane: chip.pane }))
+        .child(svg("mods/my-tabs/split.svg").size(12).flex_none().text_color(t.dim))
+        .child(div().max_w(170).truncate().child(chip.name))
+        .when(chip.status === "working", el => el.child(svg("mods/workspace-chrome/spinner.svg").size(12).flex_none().text_color(t.working).spin(900)))
+        .when(chip.status === "blocked" || chip.status === "done", el => el.child(div().size(6).rounded(3).bg(t[chip.status])))
+        .when(chip.focused, el => el.child(icon("chip-out", "mods/my-tabs/detach.svg", false)).child(icon("chip-close", "mods/pane/close.svg", true)));
+    };
     const item = (c, i) => {
-      const program = panes().find(p => p.tab === c.id && p.program?.agent)?.program ?? panes().find(p => p.tab === c.id)?.program;
+      const chips = chipsFor(c.id, all, split), own = chips.length ? hostPanes(c.id, all, chips) : all.filter(p => p.tab === c.id);
+      const program = own.find(p => p.program?.agent)?.program ?? own[0]?.program;
       const name = /^tb\d+$/.test(c.name) ? program?.name ?? "Terminal" : c.name;
-      return h_flex().id(`tab-${c.id}`).h(29).px(10).gap(7).rounded(7).items_center().flex_none().text_size(12.8)
-        .border(1).border_color(c.active ? t.border : t.chrome).bg(c.active ? t.raised : t.chrome).text_color(c.active ? t.foreground : t.muted)
+      const lit = c.active && !chips.some(x => x.focused), status = chips.length ? hostStatus(own) : c.status;
+      const tab = h_flex().id(`tab-${c.id}`).h(29).px(10).gap(7).rounded(7).items_center().flex_none().text_size(12.8)
+        .border(1).border_color(lit ? t.border : t.chrome).bg(lit ? t.raised : t.chrome).text_color(lit ? t.foreground : t.muted)
         .hover(s => s.bg(t.hover))
         .on_mouse_down("left", (e, cx) => {
           cx.stop_propagation();
@@ -82,14 +157,16 @@ export default class Tabs extends View {
         .on_mouse_up("left", () => {
           const from = this.pressed; this.pressed = null; this.pressedTab = null;
           if (from !== null && from !== i) run("tab.move", { id: shown[from].id, index: space.tabs.findIndex(x => x.id === c.id) + 1 });
+          else if (chips.length) run("pane.focus", { pane: own[0]?.pane ?? chips[0].pane });
           else run("tab.select", { id: c.id });
         })
         .on_mouse_down("right", (_e, cx) => { cx.stop_propagation(); openOverlay({ mod: "menu", kind: "popup", width: 200, props: { tab: "tab", target: { id: c.id, space: space.id } } }); })
         .when(Boolean(program?.icon), el => el.child(program.tint ? svg(program.icon).size(14).text_color(t.muted) : image(program.icon).size(14)))
         .child(div().max_w(170).truncate().child(c.zoomed ? `${name} Z` : name))
-        .when(c.status === "working", el => el.child(svg("mods/workspace-chrome/spinner.svg").size(12).flex_none().text_color(t.working).spin(900)))
-        .when(c.status === "blocked" || c.status === "done", el => el.child(div().size(6).rounded(3).bg(t[c.status])))
+        .when(status === "working", el => el.child(svg("mods/workspace-chrome/spinner.svg").size(12).flex_none().text_color(t.working).spin(900)))
+        .when(status === "blocked" || status === "done", el => el.child(div().size(6).rounded(3).bg(t[status])))
         .when(c.active, el => el.child(div().id(`close-${c.id}`).text_color(t.dim).on_mouse_down("left", stop).on_click((_e, cx) => { cx.stop_propagation(); run("tab.close", { id: c.id }); }).child(svg("mods/pane/close.svg").size(12))));
+      return [tab, ...chips.map(chipEl)];
     };
     const root = layout(), sidebar = find(root, "sidebar"), w = window();
     // Old saved rails and a dragged-narrow sidebar can be smaller than the window buttons.
@@ -115,7 +192,7 @@ export default class Tabs extends View {
       .on_mouse_move(e => { if (e.local_position) { this.origin = { x: e.position.x - e.local_position.x, y: e.position.y - e.local_position.y }; this.measure(); } })
       .on_size_change(size => { this.size = size; })
       .on_scroll_wheel(e => { if (Math.abs(e.delta.y) >= 1) run(e.delta.y > 0 ? "tab.prev" : "tab.next"); })
-      .child(h_flex().id("tab-scroll").flex_1().min_w(0).h_full().items_center().gap(3).overflow_x_scrollbar().children(shown.map(item)))
+      .child(h_flex().id("tab-scroll").flex_1().min_w(0).h_full().items_center().gap(3).overflow_x_scrollbar().children(shown.flatMap(item)))
       .child(button("tab-new", "+", () => openOverlay({ mod: "my-new-menu", kind: "popup", width: 250, height: 543 })))
       .when(enabled.includes("files"), el => el.child(panelButton("files", "Files", "mods/files/file.svg")))
       .when(enabled.includes("changes"), el => el.child(panelButton("changes", "Changes", "mods/changes/changes.svg")))

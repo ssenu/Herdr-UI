@@ -3,8 +3,8 @@
 // the focused pane: a terminal keeps running (park, then keep), a viewer reopens there from its draft.
 import { View, div } from "gpui-kit";
 import { h_flex } from "gpui-base";
-import { props, closeOverlay, run, theme, notify, shared, spaces, panes, layout, focused, terminals } from "herdr";
-import { tabMove, workArea, dropZone, previewBox, placement, dropLabel } from "./logic.js";
+import { props, closeOverlay, run, theme, notify, shared, setShared, spaces, panes, layout, focused, terminals } from "herdr";
+import { tabMove, workArea, dropZone, previewBox, placement, dropLabel, addSplit, plainName, SPLIT_KEY } from "./logic.js";
 
 const WAIT_MS = 2000, POLL_MS = 100, DRAFT_MS = 800; // the closed viewer writes its last draft in its final call, which the host caps at 250 ms
 
@@ -41,6 +41,11 @@ export default class MyTabDrag extends View {
 
   zone() {
     return this.move.blocked ? null : dropZone(this.pos, this.area());
+  }
+
+  // Remembered before any swap: the tab bar keeps a chip for this pane. A pane's id survives a swap.
+  remember(pane, entry) {
+    setShared(SPLIT_KEY, addSplit(shared(SPLIT_KEY), panes(), pane, { name: plainName(props()?.tab?.name), ...entry }));
   }
 
   dismiss() {
@@ -88,6 +93,7 @@ export default class MyTabDrag extends View {
       if (!shown()) { try { run("terminal.keep", { terminal, place: "tab" }); } catch { /* best effort */ } }
       throw e;
     }
+    this.remember(shown().pane, { kind: "terminal" });
     if (swap) { run("pane.focus", { terminal }); run("pane.swap", { direction: swap }); }
   }
 
@@ -107,6 +113,7 @@ export default class MyTabDrag extends View {
       try { run("tab.new", { name: path.split(/[\\/]/).pop(), mod: "my-viewer", props: { path, on, root: null } }); } catch { /* best effort */ }
       throw e;
     }
+    this.remember(fresh().pane, { kind: "viewer", path, on });
     if (swap) { run("pane.focus", { pane: fresh().pane }); run("pane.swap", { direction: swap }); }
   }
 

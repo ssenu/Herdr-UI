@@ -95,3 +95,15 @@ test("dropLabel: the direction, cancelling, or why not", () => {
   assert.equal(L.dropLabel(null, ok), "놓으면 취소");
   assert.equal(L.dropLabel("left", { blocked: "안 돼요" }), "안 돼요");
 });
+
+test("addSplit: adds the pane and forgets panes that are gone", () => {
+  const live = [{ pane: "p1" }, { pane: "p2" }];
+  assert.deepEqual(L.addSplit({ p1: { name: "x" }, gone: { name: "z" } }, live, "p2", { name: "y", kind: "terminal" }), { p1: { name: "x" }, p2: { name: "y", kind: "terminal" } });
+  assert.deepEqual(L.addSplit(undefined, live, "p2", { name: "y", kind: "terminal" }), { p2: { name: "y", kind: "terminal" } });
+});
+
+test("plainName: drops the unsaved mark", () => {
+  assert.equal(L.plainName("● a.txt"), "a.txt");
+  assert.equal(L.plainName("a.txt"), "a.txt");
+  assert.equal(L.plainName(null), "");
+});
