@@ -1,0 +1,105 @@
+// Drag layer for tabs: a transparent full-window overlay opened when a tab is dragged off the tab bar.
+// It shows the half the tab would take. Releasing near an edge of the work area moves the tab beside
+// the focused pane: a terminal keeps running (park, then keep), a viewer reopens there from its draft.
+import { View, div } from "gpui-kit";
+import { h_flex } from "gpui-base";
+import { props, closeOverlay, run, theme, notify, shared, spaces, panes, layout } from "herdr";
+import { tabMove, workArea, dropZone, previewBox, placement, dropLabel } from "./logic.js";
+
+const WAIT_MS = 2000, POLL_MS = 100, DRAFT_MS = 300;
+
+function find(node, id) {
+  if (node?.id === id) return node;
+  for (const child of node?.children ?? []) {
+    const found = find(child, id);
+    if (found) return found;
+  }
+  return null;
+}
+
+async function until(cx, test) {
+  for (let t = 0; t < WAIT_MS; t += POLL_MS) {
+    if (test()) return true;
+    await cx.sleep(POLL_MS);
+  }
+  return test();
+}
+
+export default class MyTabDrag extends View {
+  init(_props, cx) {
+    this.pos = null; this.size = null; this.done = false;
+    const space = spaces().find(s => s.active), tabId = props()?.tab?.id;
+    this.move = tabMove(tabId, { activeTab: space?.tabs.find(t => t.active)?.id, panes: panes(), machine: space?.machine ?? null, own: shared("my-viewer.own") });
+    this.handle = cx.focus_handle();
+    this.handle.focus();
+  }
+
+  area() {
+    const root = layout(), panel = find(root, "panel"), status = find(root, "status");
+    return workArea({ bar: shared("my-tabs.bounds"), window: this.size, panelWidth: panel && !panel.hidden ? panel.size?.px ?? 0 : 0, statusHeight: status?.size?.px ?? 0 });
+  }
+
+  zone() {
+    return this.move.blocked ? null : dropZone(this.pos, this.area());
+  }
+
+  close() { const id = props()?.overlay; if (id) closeOverlay(id); }
+
+  finish(position, cx) {
+    if (this.done) return;
+    this.done = true;
+    if (position) this.pos = position;
+    const zone = position ? this.zone() : null;
+    cx.notify(); // hides the label and preview at once
+    if (!zone) { this.close(); return; }
+    cx.spawn(async cx => {
+      try {
+        if (this.move.kind === "terminal") await this.moveTerminal(zone, cx);
+        else await this.moveViewer(zone, cx);
+      } catch (e) {
+        notify({ title: "탭을 옮기지 못했어요", body: String(e), level: "error", timeout: 5000 });
+      } finally { this.close(); }
+    });
+  }
+
+  async moveTerminal(zone, cx) {
+    const { terminal } = this.move, { place, swap } = placement(zone);
+    const shown = () => panes().find(p => p.terminal === terminal);
+    run("terminal.park", { terminal });
+    if (!await until(cx, () => !shown())) throw new Error("터미널을 탭에서 떼지 못했어요");
+    run("terminal.keep", { terminal, place });
+    if (!await until(cx, () => Boolean(shown()))) throw new Error("터미널이 새 칸에 나타나지 않았어요");
+    if (swap) { run("pane.focus", { terminal }); run("pane.swap", { direction: swap }); }
+  }
+
+  async moveViewer(zone, cx) {
+    const { path, on } = this.move, { place, swap } = placement(zone), tabId = props().tab.id;
+    run("tab.close", { id: tabId, confirmed: true });
+    if (!await until(cx, () => !panes().some(p => p.tab === tabId))) throw new Error("뷰어 탭을 닫지 못했어요");
+    await cx.sleep(DRAFT_MS); // the closed viewer writes its last draft
+    const before = new Set(panes().map(p => p.pane));
+    run("pane.split", { direction: place, mod: "my-viewer", props: { path, on, root: null } });
+    const fresh = () => panes().find(p => p.mod === "my-viewer" && !before.has(p.pane));
+    if (!await until(cx, () => Boolean(fresh()))) throw new Error("새 칸이 나타나지 않았어요");
+    if (swap) { run("pane.focus", { pane: fresh().pane }); run("pane.swap", { direction: swap }); }
+  }
+
+  render() {
+    const t = theme(), { tab } = props() ?? {}, zone = this.done ? null : this.zone(), area = zone ? this.area() : null;
+    const box = zone ? previewBox(zone, area) : null;
+    return div().id("my-tab-drag").track_focus(this.handle).size_full().bg("#00000001")
+      .on_size_change(size => { this.size = size; })
+      .on_key_down((e, cx) => { if (e.key === "escape") { cx.stop_propagation(); this.finish(null, cx); } })
+      .on_mouse_move((e, cx) => { if (!this.done) { this.pos = e.position; cx.notify(); } })
+      .on_mouse_up("left", (e, cx) => this.finish(e.position, cx))
+      // Released before this layer opened: the next press just closes it.
+      .on_mouse_down("left", (_e, cx) => { cx.stop_propagation(); this.finish(null, cx); })
+      .when(Boolean(box), el => el.child(div().absolute().left(box.x).top(box.y).w(box.width).h(box.height)
+        .rounded(10).bg(t.accent).opacity(0.18).border_1().border_color(t.accent)))
+      .when(Boolean(this.pos) && !this.done, el => el.child(
+        h_flex().absolute().left(this.pos.x + 14).top(this.pos.y + 12).h(26).px(10).gap(6).items_center()
+          .rounded(7).bg(t.popover).border_1().border_color(this.move.blocked ? t.blocked : t.accent).text_color(t.foreground).text_size(12)
+          .child(tab?.name ?? "")
+          .child(div().text_color(t.dim).child(`· ${dropLabel(zone, this.move)}`))));
+  }
+}

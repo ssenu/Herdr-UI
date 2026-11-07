@@ -15,6 +15,7 @@
 | `my-viewer` | 터미널처럼 탭으로 열리는 파일 뷰어·편집기 |
 | `my-status` | 기본 하단 바의 복제본. 이 PC의 CPU·RAM·GPU 표시 |
 | `my-status-dash` | 하단 바 수치에 마우스를 올리면 뜨는 최근 5분 그래프 |
+| `my-tab-drag` | 탭을 끌어 작업 화면의 가장자리에 놓으면 분할 |
 | `my-tabs` | 기본 탭 바의 복제본. Files · Changes 옆에 GitHub · Plugin · Session 버튼 추가 |
 
 ## 기능
@@ -40,6 +41,12 @@
 - **편집**: 코드와 텍스트를 고치고 **Ctrl+S**로 저장합니다. `.md` 는 **[보기] [편집]** 을 오갑니다. 400,000자가 넘는 파일과 원격 파일은 읽기 전용입니다. 원격 파일에는 **[nano로 열기]**, 이 PC의 큰 파일에는 **[외부 프로그램으로 열기]** 가 있습니다.
 - **표시할 수 없는 파일**(이미지, PDF, 압축 파일 등)은 **[외부 프로그램으로 열기]** 를 보여 줍니다.
 - **초안**: 저장하지 않은 내용은 1초쯤 뒤 초안으로 보관됩니다(`<앱 폴더>\data\my-viewer\drafts`). 탭을 닫거나 앱을 꺼도 남아 있고(앱을 강제로 끄거나 앱이 죽으면 마지막 1초쯤 입력한 내용은 잃을 수 있습니다), 그 파일을 다시 열면 `●` 와 함께 복원됩니다. 그사이 원본이 바뀌었으면 **[초안 유지] [디스크 버전 불러오기]** 중 고릅니다.
+
+### 탭을 끌어 분할하기 (`my-tab-drag`)
+
+- 탭을 누른 채 탭 바 밖으로 끌어 작업 화면 **네 가장자리** 중 하나에 놓으면, 지금 탭이 그 방향으로 나뉘고 끌어온 탭이 거기로 옮겨 옵니다. 가장자리에서 안쪽 25%까지가 놓는 구역이고, 나뉠 자리가 미리 표시됩니다. 가운데나 화면 밖에 놓거나 Esc를 누르면 취소됩니다.
+- 터미널과 에이전트는 실행 중인 프로세스가 그대로 옮겨 옵니다. 파일 뷰어는 닫았다가 새 칸에 다시 열리고, 저장 안 한 내용은 초안에서 복원됩니다.
+- 탭 바 안에서 끌면 지금처럼 순서만 바뀝니다.
 
 ### GitHub 패널 (`my-github`)
 
@@ -108,7 +115,7 @@ cd Herdr-UI
 
 설치 스크립트가 하는 일:
 
-1. `mods\` 의 열한 mod를 `~\.config\herdr-app\mods\` 에 복사합니다.
+1. `mods\` 의 열두 mod를 `~\.config\herdr-app\mods\` 에 복사합니다.
 2. 레이아웃 `my-layout` 을 고칩니다. 없으면 기본 레이아웃 `main` 을 `my-layout` 으로 복제한 뒤 고칩니다.
    - Files 칸: `files` → `my-files`
    - 탭 바: `tabs` → `my-tabs`
@@ -133,7 +140,7 @@ mod와 레이아웃은 저장하면 바로 적용되므로 앱을 다시 켤 필
 
 ## 수동 설치
 
-1. `mods/` 안의 열한 폴더를 `~/.config/herdr-app/mods/` 에 복사합니다.
+1. `mods/` 안의 열두 폴더를 `~/.config/herdr-app/mods/` 에 복사합니다.
 2. 쓰는 레이아웃(`~/.config/herdr-app/layouts/<이름>.json`, 기본 레이아웃이면 먼저 `herdr-app do layout.clone --name main --as my-layout`)에서:
    - `"mod": "files"` → `"mod": "my-files"`
    - `"mod": "tabs"` → `"mod": "my-tabs"`
@@ -158,7 +165,7 @@ mod는 덮어씁니다. 레이아웃은 백업한 뒤 빠진 칸만 추가하므
 ## 제거
 
 1. 백업(`layouts\my-layout.json.bak-<시각>`)을 `my-layout.json` 으로 되돌리거나, 위 여섯 가지를 원래대로(`files`, `tabs`, `workspace-status`, github·plugins·sessions 칸 삭제) 고칩니다.
-2. `~\.config\herdr-app\mods\` 에서 `my-files`, `my-files-drag`, `my-files-open`, `my-github`, `my-new-menu`, `my-plugins`, `my-sessions`, `my-status`, `my-status-dash`, `my-tabs`, `my-viewer` 폴더를 지웁니다.
+2. `~\.config\herdr-app\mods\` 에서 `my-files`, `my-files-drag`, `my-files-open`, `my-github`, `my-new-menu`, `my-plugins`, `my-sessions`, `my-status`, `my-status-dash`, `my-tab-drag`, `my-tabs`, `my-viewer` 폴더를 지웁니다.
 3. 뷰어 초안까지 지우려면 `~\.config\herdr-app\data\my-viewer\` 를 지웁니다.
 
 ## 알려진 한계
@@ -173,6 +180,7 @@ mod는 덮어씁니다. 레이아웃은 백업한 뒤 빠진 칸만 추가하므
 - Plugins 패널은 Claude 플러그인이 제공하는 MCP 서버와 꺼 둔 플러그인/서버 상태(`enabledPlugins`, `disabledMcpServers`)를 반영하지 않습니다. Codex의 `CODEX_HOME`은 무시하고 `~/.codex`를 읽으며, 원격 스페이스는 유닉스(sh) 머신으로 가정합니다.
 - Sessions 패널의 초록 점은 목록을 다시 읽을 때 바뀌므로 최대 30초 늦을 수 있습니다(⟳ 로 바로 반영). Claude Code의 내부 파일 형식에 기대므로, 형식이 바뀌면 제목이나 초록 점이 안 보일 수 있습니다. Codex 세션은 보이지 않습니다. 탭이 열리는 머신에 `claude` 명령이 있어야 하고, 원격 스페이스는 유닉스(sh) 머신으로 가정합니다. 후보 폴더(저장소 이름으로 시작하는 폴더 포함)에서 최근 파일 300개만 읽으므로, 이름이 비슷한 폴더의 세션이 아주 많으면 일부가 안 보일 수 있습니다. 드라이브 루트나 `/` 를 저장소로 쓰면 하위 폴더의 세션은 보이지 않습니다. 실제 원격 머신과 macOS, 시작 폴더가 지워진 세션을 여는 경우는 아직 확인하지 않았습니다.
 - 파일 뷰어는 이미지·PDF를 탭에서 보여 주지 않습니다(외부 프로그램으로 엽니다). 탭을 닫을 때 묻지 않는 대신 초안을 복원합니다. 초안은 그 PC에만 남습니다. 1 MiB가 넘는 파일은 읽지 못합니다. 탭 바에 드롭하기 전까지 마우스가 탭 바 위를 한 번도 지나지 않았으면 창 맨 위 40px을 탭 바로 칩니다.
+- 탭 끌어 분할하기는 한 칸짜리 터미널·에이전트 탭과 파일을 연 뷰어 탭만 옮깁니다. 지금 보고 있는 탭과 원격 탭은 옮기지 않습니다. 이미 나뉜 화면에서는 포커스된 칸이 나뉩니다. 분할 칸의 뷰어는 탭 이름에 `●` 가 없고, 같은 파일을 다시 드롭하면 새 탭이 열립니다. 분할을 다시 탭으로 빼는 기능은 없습니다.
 - 시스템 모니터는 Windows에서만, 항상 이 PC의 값을 보여 줍니다. 5초마다 PowerShell을 한 번 실행합니다. 그래프는 메모리에만 있어 앱을 끄면 사라집니다. GPU 값은 작업 관리자와 조금 다를 수 있습니다.
 
 ## 개발

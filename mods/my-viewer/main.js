@@ -56,7 +56,7 @@ export default class Viewer extends View {
   register() {
     if (!this.tab) return;
     const list = spaces(), own = keepLive(shared(OWN_KEY), list, v => v.tab);
-    setShared(OWN_KEY, { ...own, [this.token]: { tab: this.tab, path: this.path } });
+    setShared(OWN_KEY, { ...own, [this.token]: { tab: this.tab, path: this.path, on: this.on } });
     if (this.path) setShared(OPEN_KEY, { ...keepLive(shared(OPEN_KEY), list, v => v), [openKey(this.on, this.path)]: this.tab });
   }
 

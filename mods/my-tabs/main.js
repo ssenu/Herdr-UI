@@ -45,6 +45,13 @@ export default class Tabs extends View {
     localStorage.setItem("panels", JSON.stringify(this.panels));
   }
 
+  // The pointer left the bar with a tab held: a full-window layer takes over the drag.
+  dragOut() {
+    const tab = this.pressedTab;
+    this.pressed = null; this.pressedTab = null;
+    if (tab) openOverlay({ mod: "my-tab-drag", kind: "window", frame: "none", width: 1, height: 1, at: { x: 0, y: 0 }, props: { tab } });
+  }
+
   // The bar's box in window coordinates, for a file dropped on it. Sent only when it changes:
   // a shared value re-renders every mod.
   measure() {
@@ -67,9 +74,9 @@ export default class Tabs extends View {
       return h_flex().id(`tab-${c.id}`).h(29).px(10).gap(7).rounded(7).items_center().flex_none().text_size(12.8)
         .border(1).border_color(c.active ? t.border : t.chrome).bg(c.active ? t.raised : t.chrome).text_color(c.active ? t.foreground : t.muted)
         .hover(s => s.bg(t.hover))
-        .on_mouse_down("left", (e, cx) => { cx.stop_propagation(); this.pressed = i; if (e.click_count === 2) run("tab.rename", { id: c.id }); })
+        .on_mouse_down("left", (e, cx) => { cx.stop_propagation(); this.pressed = i; this.pressedTab = { id: c.id, name }; if (e.click_count === 2) run("tab.rename", { id: c.id }); })
         .on_mouse_up("left", () => {
-          const from = this.pressed; this.pressed = null;
+          const from = this.pressed; this.pressed = null; this.pressedTab = null;
           if (from !== null && from !== i) run("tab.move", { id: shown[from].id, index: space.tabs.findIndex(x => x.id === c.id) + 1 });
           else run("tab.select", { id: c.id });
         })
@@ -98,8 +105,9 @@ export default class Tabs extends View {
           else { run("layout.select", { stack: "panel-body", child: id }); run("layout.show", { id: "panel" }); }
         }).child(svg(icon).size(14)).child(label);
     };
-    return h_flex().size_full().min_w(0).px(10).pl(lightsPadding).gap(3).items_center().bg(t.chrome).border_b(1).border_color(t.border)
-      .on_mouse_up("left", () => { this.pressed = null; })
+    return h_flex().id("my-tabs-bar").size_full().min_w(0).px(10).pl(lightsPadding).gap(3).items_center().bg(t.chrome).border_b(1).border_color(t.border)
+      .on_mouse_up("left", () => { this.pressed = null; this.pressedTab = null; })
+      .on_hover(hovered => { if (!hovered) this.dragOut(); })
       .on_mouse_move(e => { if (e.local_position) { this.origin = { x: e.position.x - e.local_position.x, y: e.position.y - e.local_position.y }; this.measure(); } })
       .on_size_change(size => { this.size = size; })
       .on_scroll_wheel(e => { if (Math.abs(e.delta.y) >= 1) run(e.delta.y > 0 ? "tab.prev" : "tab.next"); })
