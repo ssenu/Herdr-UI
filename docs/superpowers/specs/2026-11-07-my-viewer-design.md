@@ -8,15 +8,15 @@
 
 - `my-viewer`: `tab.new { name, space, mod: "my-viewer", props }`로 만드는 탭 전체 mod. 탭 하나에 파일 하나. 파일을 연 뒤에는 다른 파일로 바꾸지 않는다.
 - `my-new-menu`: 기본 `new-menu`의 복제본(`mod.clone`과 같은 방식, `cloned_from` 기록). Terminal 아래에 "파일 뷰어" 항목을 더한다. `my-tabs`의 `+`가 이 메뉴를 연다.
-- `my-tabs`: 탭 바 위치를 측정해 `setShared("my-tabs.bounds", {x, y, width, height})`로 알린다.
-- `my-files`: 드래그를 시작할 때 `tabs: shared("my-tabs.bounds")`를 `my-files-drag`의 props에 더한다.
+- `my-tabs`: 탭 바 위치를 측정해 바뀔 때만 `setShared("my-tabs.bounds", {x, y, width, height})`로 알린다.
+- `my-files`: 드래그 정보에 절대경로와 머신을 더한다. `my-files-drag`가 `my-tabs.bounds`를 직접 읽는다.
 - `my-files-drag`: 놓은 위치로 행동을 고른다(아래 "드롭").
 
 ## 여는 방법
 
 - **`+` → 파일 뷰어**: `tab.new { name: "파일 뷰어", mod: "my-viewer", props: { root, on } }`. `root`는 포커스된 칸의 폴더, `on`은 그 머신. 탭에는 `my-files`의 파일 찾기(`indexCommand`, `searchPaths`)와 같은 검색 화면이 나오고, 고르면 그 탭에 열린다. 파일을 고르면 `tab.rename`으로 탭 이름을 파일 이름으로 바꾼다.
 - **탭 바에 드롭**: 파일이면 `tab.new { name: 파일 이름, mod: "my-viewer", props: { path, on } }`.
-- **이미 열린 파일**: 새 탭을 만들지 않고 그 탭을 보여 준다(다른 스페이스면 `space.select` 후 `tab.select`). `my-viewer`는 파일을 열 때 자기 탭 ID를 `shared("my-viewer.open")`(`{ "<on>|<path>": tabId }`)에 기록한다. 지금 `spaces()`에 없는 탭 ID는 없는 것으로 친다.
+- **이미 열린 파일**: 새 탭을 만들지 않고 그 탭을 보여 준다(다른 스페이스면 `space.select` 후 `tab.select`). `run()`은 mod 안에서 값을 돌려주지 않고 탭 mod의 `props()`에 자기 탭 ID가 없으므로(확인함), 여는 쪽이 고유한 임시 탭 이름을 props와 함께 주고, `my-viewer`가 그 이름으로 자기 탭을 찾은 뒤 이름을 바꾸고 `shared("my-viewer.open")`(`{ "<on>|<path>": tabId }`)과 `shared("my-viewer.own")`(`{ token: { tab, path } }`)에 기록한다. 지금 `spaces()`에 없는 탭 ID는 없는 것으로 친다.
 
 ## 드롭 (`my-files-drag`)
 
@@ -29,8 +29,7 @@
 | 그 밖 | 터미널에 경로 입력(지금과 같음) | 터미널에 경로 입력 |
 
 - 드래그 이름표: 탭 바 위에서는 `놓으면 새 탭으로 열기`, 그 밖에는 지금처럼 `놓으면 입력`.
-- `my-tabs.bounds`가 없으면(다른 레이아웃, 측정 실패) 탭 바 위가 아닌 것으로 친다.
-- 드래그 레이어의 좌표와 탭 바 좌표가 같은 기준인지는 구현 첫 단계에서 시험한다. 측정이 안 되면 "창 맨 위 40px"로 판단한다.
+- 측정 전(마우스가 탭 바를 지나기 전)에는 "창 맨 위 40px"로 판단한다. Files 패널이 같은 방식으로 측정한 좌표를 드래그 레이어에서 쓰고 있다.
 
 ## 파일별 동작
 
@@ -38,9 +37,9 @@
 |---|---|
 | 코드·일반 텍스트 | `Editor`로 편집, Ctrl+S 저장 (CRLF 유지) |
 | `.md`, `.markdown` | `[보기] [편집]` 전환, 보기로 시작 |
-| 텍스트가 아닌 파일 | 파일 이름과 `[기본 프로그램으로 열기]` |
+| 텍스트가 아닌 파일 | 파일 이름과 `[외부 프로그램으로 열기]`(`my-files-open` 메뉴, 로컬만) |
 | 400,000자 초과 | 읽기 전용 + 잘렸다는 표시 |
-| 원격 파일 | 읽기 전용 + `[nano로 열기]` |
+| 원격 파일 | 읽기 전용 + `[nano로 열기]`(새 탭: 뷰어 탭에는 나눌 터미널 칸이 없다) |
 | 파일이 없거나 못 읽음 | 이유와 `[다시 읽기]` |
 
 텍스트 판별: 확장자가 알려진 바이너리(이미지, PDF, 압축, 실행 파일 등)이거나 읽은 내용에 NUL 문자가 있으면 텍스트가 아니다.
@@ -60,14 +59,14 @@
 
 ## 함수 (`mods/my-viewer/logic.js`, 순수)
 
-- `dropAction({ position, panel, tabs, dir })` → `"cancel" | "open" | "folder" | "paste"` (`my-files-drag`도 쓰므로 그쪽 `logic.js`에 둔다. 다른 mod를 불러올 수 없으면 복사한다.)
+- `dropAction({ position, panel, tabs, dir })` → `"cancel" | "open" | "folder" | "paste"` (여는 쪽과 함께 쓰는 `viewer-open.js`에 둔다.)
 - `viewKind(path, text)` → `"text" | "markdown" | "binary"`.
 - `textHash(text)`, `draftName(path)`: 짧고 안정적인 해시, 파일 이름에 쓸 수 있는 형태.
 - `restoreState(draft, path, diskText)` → `{ text, dirty, conflict }`.
 - `dirtyName(name, dirty)`: 탭 이름에 `● ` 붙이고 떼기(원래 이름에 `● `가 있어도 안전하게).
 - `openKey(on, path)`, `liveTab(open, key, spaces)`: 이미 열린 탭 찾기.
 
-`my-files`의 `logic.js`(`editableInfo`, `previewText`, 줄바꿈 처리, `indexCommand`, `indexLines`, `searchPaths`)는 `../my-files/logic.js`로 불러온다. mod 간 불러오기가 안 되면 쓰는 함수만 복사한다.
+mod는 자기 폴더 밖을 불러올 수 없다(확인함). 그래서 `my-files`의 `logic.js`는 `mods/my-viewer/files-logic.js`로, `viewer-open.js`는 `my-viewer`, `my-files-drag`, `my-new-menu`에 복사본을 두고, 테스트가 내용이 같은지 확인한다.
 
 ## 테스트
 
