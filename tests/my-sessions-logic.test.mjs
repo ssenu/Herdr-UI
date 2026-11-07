@@ -122,6 +122,12 @@ test("sessionLines drops a line with an empty time", () => {
   assert.deepEqual(L.sessionLines(["FILE", "d", U1, "", '"/r"', "", "", ""].join("\t")), []);
 });
 
+test("liveIds: LIVE lines with a real id, lowercased, nothing else", () => {
+  const out = [`LIVE\t${U1}`, `LIVE\t${U2.toUpperCase()}\r`, "LIVE\t--evil", "LIVE", ["FILE", "d", U1].join("\t")].join("\n");
+  assert.deepEqual([...L.liveIds(out)], [U1, U2]);
+  assert.equal(L.liveIds("").size, 0);
+});
+
 test("psQuote doubles straight and typographic single quotes", () => {
   assert.equal(L.psQuote("it's"), "'it''s'");
   assert.equal(L.psQuote("‘a’b‚c‛"), "'‘‘a’’b‚‚c‛‛'");
@@ -167,13 +173,27 @@ function sessionsFixture() {
   put("C--r-app2", id(7), [{ cwd: "C:\\r\\app2" }]); // no dash after the prefix: not a candidate
   put("C--other", id(8), [{ cwd: "C:\\other" }]);
   put("-r-unix", id(9), [{ cwd: "/r/unix" }]); // Unix storage names start with a dash
-  return { home, id };
+  const sessions = pjoin(home, ".claude", "sessions");
+  mkdirSync(sessions, { recursive: true });
+  const record = (name, pid, sid, startedAt) => writeFileSync(pjoin(sessions, name), JSON.stringify({ pid, sessionId: sid, startedAt, peerToken: "SECRET-TOKEN" }));
+  record("1.json", process.pid, id(1), Date.now()); // this test's own process: running
+  record("2.json", 4194300, id(2), Date.now()); // no such process
+  record("3.123abc.key", process.pid, id(5), Date.now()); // not a session record
+  writeFileSync(pjoin(sessions, "4.json"), "not json");
+  return { home, id, sessions, record };
 }
 for (const windows of [true, false]) {
   const shell = windows ? "powershell" : "sh";
   const runs = !spawnSync(shell, windows ? ["-NoProfile", "-Command", "exit 0"] : ["-c", "exit 0"]).error;
-  test(`sessionsCommand runs (${shell})`, { skip: !runs || (windows && process.platform !== "win32") }, () => {
-    const { home, id } = sessionsFixture();
+  test(`sessionsCommand runs (${shell})`, { skip: !runs || (windows && process.platform !== "win32") }, t => {
+    const { home, id, record } = sessionsFixture();
+    if (windows) record("5.json", process.pid, id(6), 1000); // the pid now belongs to a newer process
+    // sh only sees its own kind of pid (Git's sh on Windows numbers processes itself), so start one with sh.
+    const sleeper = windows ? null : spawnSync("sh", ["-c", "sleep 30 >/dev/null 2>&1 & echo $!"], { encoding: "utf8" }).stdout.trim();
+    if (sleeper) {
+      record("1.json", Number(sleeper), id(1), Date.now());
+      t.after(() => spawnSync("sh", ["-c", `kill ${sleeper}`]));
+    }
     const env = { ...process.env, USERPROFILE: home, HOME: windows ? home : home.replaceAll("\\", "/") };
     const c = L.sessionsCommand(["C--r-app"], windows);
     const r = spawnSync(c.command, c.args, { encoding: "utf8", env });
@@ -190,6 +210,8 @@ for (const windows of [true, false]) {
     assert.equal(by(2).aiTitle, "자동");
     assert.equal(by(5).aiTitle, "");
     assert.equal(by(6).dir, "C--r-app-old");
+    assert.ok(!r.stdout.includes("SECRET-TOKEN"));
+    assert.deepEqual([...L.liveIds(r.stdout)], [id(1)]);
     const unix = L.sessionsCommand(["-r-unix"], windows);
     const dash = spawnSync(unix.command, unix.args, { encoding: "utf8", env });
     assert.equal(dash.status, 0, dash.stderr);

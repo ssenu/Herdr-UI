@@ -3,7 +3,7 @@
 import { View, div } from "gpui-kit";
 import { v_flex, h_flex } from "gpui-base";
 import { spaces, panes, focused, exec, run, notify, theme, layout, window } from "herdr";
-import { encodeProject, worktreePaths, sessionLines, toSessions, pickSessions, isUnder, sessionMeta, tabTitle, emptyText, sessionsCommand } from "./logic.js";
+import { encodeProject, worktreePaths, sessionLines, liveIds, toSessions, pickSessions, isUnder, sessionMeta, tabTitle, emptyText, sessionsCommand } from "./logic.js";
 
 const REFRESH_MS = 30000, SHOW_LIMIT = 100;
 
@@ -34,7 +34,7 @@ async function collect({ cwd, on }) {
   const c = sessionsCommand(worktrees.map(encodeProject), !on && window()?.platform === "windows");
   const r = await exec(c.command, c.args, { on });
   if (r.code !== 0) throw new Error((r.stderr || "").trim() || "세션 목록을 읽지 못했어요");
-  return { root, worktrees, sessions: toSessions(sessionLines(r.stdout)) };
+  return { root, worktrees, sessions: toSessions(sessionLines(r.stdout)), live: liveIds(r.stdout) };
 }
 
 export default class Sessions extends View {
@@ -114,7 +114,9 @@ export default class Sessions extends View {
         .when(Boolean(this.error && d), el => el.child(div().px(8).py(4).text_size(12).text_color(t.ansi1).child(`⚠ ${this.error}`)))
         .children(picked.items.map(s => v_flex().id(`session-${s.id}`).flex_none().px(8).py(6).gap(3).rounded(7).cursor_pointer().hover(st => st.bg(t.hover))
           .on_click(e => { if (e.click_count === 1) this.open(s); })
-          .child(div().min_w(0).truncate().child(s.title))
+          .child(h_flex().min_w(0).gap(6).items_center()
+            .when(d.live.has(s.id.toLowerCase()), el => el.child(div().flex_none().w(8).h(8).rounded(4).bg(t.ansi2)))
+            .child(div().flex_1().min_w(0).truncate().child(s.title)))
           .child(div().min_w(0).truncate().text_size(11).text_color(t.dim).child(sessionMeta(s, d.root, now)))))
         .when(picked.more, el => el.child(div().p(8).text_size(11).text_color(t.dim).child("최근 100개만 보여 줘요")))
         .when(picked.items.length === 0, el => el.child(div().p(8).text_size(12).text_color(t.dim).child(message))));

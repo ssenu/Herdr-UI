@@ -85,6 +85,16 @@ export function sessionLines(stdout) {
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
+/** sessionsCommand's output → the ids of sessions a running Claude Code has open. */
+export function liveIds(stdout) {
+  const ids = new Set();
+  for (const line of String(stdout ?? "").split(/\r?\n/)) {
+    const f = line.split("\t");
+    if (f[0] === "LIVE" && UUID.test(f[1] ?? "")) ids.add(f[1].toLowerCase());
+  }
+  return ids;
+}
+
 const clean = t => String(t ?? "").replace(/\s+/g, " ").trim();
 
 /** Rows → sessions to show. The id goes into a command line, so only real UUIDs pass. */
@@ -158,12 +168,24 @@ const HEAD_BYTES = 262144, TAIL_BYTES = 65536, MAX_FILES = 300;
  * One command printing a FILE line per session under ~/.claude/projects/<prefix or prefix-*>:
  * only the first cwd, the last titles and the last branch, read from the file's two ends.
  * Files without a cwd in the first part are skipped. See sessionLines for the format.
+ * Before those, a LIVE line per running session in ~/.claude/sessions/<pid>.json: only the id
+ * leaves the command, because those files also hold tokens. See liveIds.
  */
 export function sessionsCommand(prefixes, windows) {
   if (windows) {
     const token = key => `'"${key}":("(?:[^"\\\\]|\\\\.)*")'`;
     const script = [
       "[Console]::OutputEncoding = [System.Text.UTF8Encoding]::new($false)",
+      "$live = Join-Path $env:USERPROFILE '.claude\\sessions'",
+      // A process that started after the session did has only inherited the pid of a dead one.
+      "if ([IO.Directory]::Exists($live)) { foreach ($f in [IO.Directory]::GetFiles($live, '*.json')) { try { " +
+        "$t = [IO.File]::ReadAllText($f); " +
+        "$p = [regex]::Match($t, '\"pid\"\\s*:\\s*(\\d+)'); $i = [regex]::Match($t, '\"sessionId\"\\s*:\\s*\"([0-9a-fA-F-]{36})\"'); $s = [regex]::Match($t, '\"startedAt\"\\s*:\\s*(\\d+)'); " +
+        "if (-not $p.Success -or -not $i.Success) { continue }; " +
+        "$proc = Get-Process -Id ([int]$p.Groups[1].Value) -ErrorAction Stop; " +
+        "if ($s.Success -and [DateTimeOffset]::new($proc.StartTime.ToUniversalTime()).ToUnixTimeMilliseconds() -gt [long]$s.Groups[1].Value + 5000) { continue }; " +
+        "\"LIVE`t$($i.Groups[1].Value)\" " +
+        "} catch {} } }",
       "$base = Join-Path $env:USERPROFILE '.claude\\projects'",
       "if (-not [IO.Directory]::Exists($base)) { exit 0 }",
       `$prefixes = @(${prefixes.map(psQuote).join(", ")})`,
@@ -189,7 +211,12 @@ export function sessionsCommand(prefixes, windows) {
   // Single backslashes only (one inside a bracket is literal): Git's sh on Windows halves doubled backslashes in arguments.
   const grab = (key, pick) => `grep -a -o -E '"${key}":"([^"\\]|[\\].)*"' | ${pick} -n 1 | sed 's/^"[A-Za-z]*"://'`;
   const script =
-    'LC_ALL=C; export LC_ALL; base="$HOME/.claude/projects"; [ -d "$base" ] || exit 0; cd "$base" || exit 1; ' +
+    'LC_ALL=C; export LC_ALL; ' +
+    'for f in "$HOME/.claude/sessions"/*.json; do [ -f "$f" ] || continue; ' +
+    `pid=$(grep -a -o -E '"pid": *[0-9]+' "$f" | head -n 1 | sed 's/.*[^0-9]//'); ` +
+    `id=$(grep -a -o -E '"sessionId": *"[0-9a-fA-F-]{36}"' "$f" | head -n 1 | sed 's/.*: *"//; s/"$//'); ` +
+    '[ -n "$pid" ] && [ -n "$id" ] && kill -0 "$pid" 2>/dev/null && printf "LIVE\\t%s\\n" "$id"; done; ' +
+    'base="$HOME/.claude/projects"; [ -d "$base" ] || exit 0; cd "$base" || exit 1; ' +
     // "./" first: on Unix every storage name starts with "-", which head, tail and stat would read as an option.
     'for p in "$@"; do for f in "./$p"/*.jsonl "./$p"-*/*.jsonl; do [ -f "$f" ] || continue; ' +
     'm=$(stat -c %Y "$f" 2>/dev/null || stat -f %m "$f"); printf "%s\\t%s\\n" "$m" "$f"; done; done | ' +
