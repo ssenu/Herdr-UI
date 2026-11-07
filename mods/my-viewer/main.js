@@ -10,7 +10,7 @@ import { viewKind, textHash, draftName, parseDraft, restoreState, dirtyName, bas
 import { OPEN_KEY, OWN_KEY, openKey, openCommands } from "./viewer-open.js";
 
 const LANG = { ts: "js", tsx: "js", mts: "js", cts: "js", jsx: "js", mjs: "js", toml: "yaml", jsonc: "json", svelte: "html", vue: "html" };
-const DRAFT_MS = 1000, CLAIM_MS = 500, RESULT_LIMIT = 200;
+const DRAFT_MS = 1000, CLAIM_MS = 500, CLAIM_TRIES = 60, RESULT_LIMIT = 200;
 const GONE = "이 파일을 찾을 수 없어요";
 const draftsDir = () => `${appHome()}/data/my-viewer/drafts`;
 const draftFile = path => `${draftsDir()}/${draftName(path)}.json`;
@@ -27,7 +27,13 @@ export default class Viewer extends View {
     this.search.on("change", (_e, cx) => { this.query = this.search.value(); this.at = 0; this.ensureIndex(cx); cx.notify(); });
     this.search.on("submit", (_e, cx) => { this.openResult(cx); cx.notify(); });
     this.claimTab();
-    cx.timer.every(CLAIM_MS, () => { if (!this.tab) this.claimTab(); });
+    if (this.token && !this.tab) {
+      let tries = 0;
+      this.claimTimer = cx.timer.every(CLAIM_MS, () => {
+        if (!this.tab && ++tries <= CLAIM_TRIES) this.claimTab();
+        if (this.tab || tries >= CLAIM_TRIES) this.claimTimer?.cancel();
+      });
+    }
     if (this.path) this.load(cx); else this.search.focus();
   }
 
@@ -61,21 +67,32 @@ export default class Viewer extends View {
     return parseDraft(await readTextFile(draftFile(this.path)).catch(() => null));
   }
 
-  async dropDraft(path = this.path) {
-    try { await unlink(draftFile(path)); } catch {} // usually there is none
+  // Draft writes and deletes run one at a time, deciding from the state when their turn comes.
+  queueDraft(work) {
+    this.draftIO = (this.draftIO ?? Promise.resolve()).then(work).catch(() => {});
+    return this.draftIO;
   }
 
-  async flushDraft() {
-    const buf = this.buf, path = this.path;
-    if (!buf?.editable) return;
-    if (!buf.dirty) return this.dropDraft(path);
-    try {
-      await mkdir(draftsDir(), { recursive: true });
-      await writeFile(draftFile(path), JSON.stringify({ path, text: buf.state.value(), base: textHash(buf.base ?? "") }));
-    } catch (e) {
-      if (!this.draftWarned) notify({ title: "초안을 보관하지 못했어요", body: String(e), level: "warning", timeout: 5000 });
-      this.draftWarned = true;
-    }
+  dropDraft(path = this.path) {
+    return this.queueDraft(async () => {
+      try { await unlink(draftFile(path)); } catch {} // usually there is none
+    });
+  }
+
+  flushDraft() {
+    return this.queueDraft(async () => {
+      const buf = this.buf, path = this.path;
+      if (!buf?.editable) return;
+      try {
+        if (!buf.dirty) { await unlink(draftFile(path)).catch(() => {}); return; }
+        await mkdir(draftsDir(), { recursive: true });
+        const base = buf.conflict === "draft" ? buf.draftBase : textHash(buf.base ?? "");
+        await writeFile(draftFile(path), JSON.stringify({ path, text: buf.state.value(), base }));
+      } catch (e) {
+        if (!this.draftWarned) notify({ title: "초안을 보관하지 못했어요", body: String(e), level: "warning", timeout: 5000 });
+        this.draftWarned = true;
+      }
+    });
   }
 
   scheduleDraft(cx) {
@@ -85,7 +102,7 @@ export default class Viewer extends View {
 
   makeBuffer(path, text, base) {
     const t = theme(), ext = path.includes(".") ? path.split(".").pop().toLowerCase() : "txt";
-    const { editable, reason } = editability({ remote: Boolean(this.on), text });
+    const { editable, reason } = editability({ remote: Boolean(this.on), text: (base?.length ?? 0) > text.length ? base : text });
     const state = EditorState.new({ language: LANG[ext] ?? ext, readonly: !editable, value: previewText(text),
       font_family: settings().font_family, font_size: 13,
       syntax: { keyword: t.ansi5, string: t.ansi2, comment: t.dim, function: t.ansi4, type: t.ansi3, number: t.ansi1, constant: t.ansi6 } });
@@ -116,6 +133,7 @@ export default class Viewer extends View {
         const buf = this.makeBuffer(path, start.text, disk);
         buf.dirty = start.dirty;
         buf.conflict = start.conflict ? "draft" : null;
+        if (start.conflict) buf.draftBase = draft.base;
         this.buf = buf;
         this.syncName();
         this.watch(cx);
@@ -182,7 +200,8 @@ export default class Viewer extends View {
         await writeTextFile(path, value, base);
         buf.base = value; buf.conflict = null; buf.dirty = !sameText(buf.state.value(), value);
         this.draftSeq++; // a pending draft must not come back after the save
-        if (!buf.dirty) await this.dropDraft(path);
+        if (buf.dirty) this.scheduleDraft(cx); // typed during the save: it still needs its draft
+        else await this.dropDraft(path);
         this.syncName();
       } catch (e) {
         // writeTextFile rejects stale snapshots and real failures alike: the disk tells them apart.
