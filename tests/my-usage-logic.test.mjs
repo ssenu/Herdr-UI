@@ -108,6 +108,8 @@ test("usageDash: today's models, biggest first, short names merged", () => {
   const models = [{ name: "claude-haiku-5-5", cost: 0.45 }, { name: "claude-opus-5-5", cost: 90 }, { name: "claude-opus-4-1", cost: 0.59 }, { name: "gpt-5", cost: 13.28 }];
   assert.equal(U.usageDash({ days: [day("2026-11-07", 104, models)] }, NOW, NOW).models, "Opus $90.59 · gpt-5 $13.28 · Haiku $0.45");
   assert.equal(U.usageDash({ days: [day("2026-11-06", 1, models)] }, NOW, NOW).models, null);
+  const old = [{ name: "claude-3-5-sonnet-20241022", cost: 2 }, { name: "claude-3-haiku-20240307", cost: 1 }];
+  assert.equal(U.usageDash({ days: [day("2026-11-07", 3, old)] }, NOW, NOW).models, "Sonnet $2.00 · Haiku $1.00");
 });
 
 test("usageDash: how old the figures are", () => {

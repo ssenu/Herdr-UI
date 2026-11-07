@@ -55,7 +55,7 @@ function ageText(ms) {
 }
 
 const shortModel = name => {
-  const m = /^claude-(opus|sonnet|haiku|fable)/i.exec(name);
+  const m = /^claude-(?:[\d.-]+-)?(opus|sonnet|haiku|fable)(?![a-z])/i.exec(name); // claude-opus-5-5, claude-3-5-sonnet-…
   return m ? m[1][0].toUpperCase() + m[1].slice(1).toLowerCase() : name;
 };
 
