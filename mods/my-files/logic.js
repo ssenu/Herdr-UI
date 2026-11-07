@@ -165,6 +165,12 @@ export function segments(text, hits) {
   return out;
 }
 
+/** Moving between spaces: stores the search of the one left, returns the search of the one entered. */
+export function switchQuery(queries, from, to, query) {
+  if (from !== undefined) queries.set(from, query);
+  return queries.get(to) ?? "";
+}
+
 /** How many paths the search index keeps. */
 export const INDEX_LIMIT = 50000;
 

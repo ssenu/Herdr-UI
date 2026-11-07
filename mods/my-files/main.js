@@ -9,17 +9,18 @@
 import { View, div, svg } from "gpui-kit";
 import { v_flex, h_flex, Editor, EditorState, TextView, InputState, Input } from "gpui-base";
 import { spaces, panes, focused, exec, readTextFile, writeTextFile, watchFolder, theme, settings, window, openOverlay, run, notify } from "herdr";
-import { absolutePath, quoteForPrompt, editability, previewText, sameText, isSaveKey, restoreEol, syncDecision, saveFailure, REASONS, isMarkdown, searchPaths, splitPath, segments, indexCommand, indexLines } from "./logic.js";
+import { absolutePath, quoteForPrompt, editability, previewText, sameText, isSaveKey, restoreEol, syncDecision, saveFailure, REASONS, isMarkdown, searchPaths, splitPath, segments, indexCommand, indexLines, switchQuery } from "./logic.js";
+import { followedCwd } from "./where.js";
 
 // A folder the panel shows instead of following the focused pane (the 바탕화면 button); null follows.
 let pinned = null;
+const lastCwd = new Map(); // space id → its last terminal folder
 
 function location() {
   if (pinned) return { cwd: pinned, on: null, space: `pinned:${pinned}` };
   const space = spaces().find(s => s.active), f = focused();
-  const pane = f?.pane ? panes().find(p => p.pane === f.pane) : null;
   const on = f?.pane === null ? (f.terminal?.includes("/") ? f.terminal.split("/")[0] : null) : space?.machine ?? null;
-  return { cwd: pane?.cwd || f?.cwd || space?.folder, on, space: space?.id };
+  return { cwd: followedCwd(lastCwd, space, f, panes()), on, space: space?.id };
 }
 const key = () => JSON.stringify(location());
 const LANG = { ts: "js", tsx: "js", mts: "js", cts: "js", jsx: "js", mjs: "js", toml: "yaml", jsonc: "json", svelte: "html", vue: "html" };
@@ -50,8 +51,12 @@ export default class Files extends View {
     this.saved = new Map(); this.buffers = new Map();
     // File search: the query, the selected result, and per-folder indexes (context key → index).
     this.query = ""; this.at = 0; this.indexes = new Map(); this.found = null;
+    this.queries = new Map(); this.querySpace = undefined; // each space keeps its own search
     this.search = InputState.new({ placeholder: "이 폴더에서 파일 찾기" });
-    this.search.on("change", (_e, cx) => { this.query = this.search.value(); this.at = 0; this.ensureIndex(cx); cx.notify(); });
+    this.search.on("change", (_e, cx) => {
+      if (this.search.value() === this.query) return; // syncQuery put it there
+      this.query = this.search.value(); this.at = 0; this.ensureIndex(cx); cx.notify();
+    });
     this.search.on("submit", (_e, cx) => { this.openResult(cx); cx.notify(); });
     this.entries = new Map(); this.folders = new Set(); this.pending = new Set(); this.marks = {};
     this.refresh(cx);
@@ -322,6 +327,17 @@ export default class Files extends View {
     catch (e) { notify({ title: "nano를 열지 못했어요", body: String(e), level: "error", timeout: 5000 }); }
   }
 
+  // The active space changed: its own search comes back. The input is set after this render.
+  syncQuery(cx) {
+    const space = spaces().find(s => s.active)?.id ?? null;
+    if (space === this.querySpace) return;
+    const next = switchQuery(this.queries, this.querySpace, space, this.query);
+    this.querySpace = space;
+    if (next === this.query) return;
+    this.query = next; this.at = 0;
+    cx.timer.after(0, cx => { if (this.search.value() !== this.query) this.search.set_value(this.query); this.ensureIndex(cx); cx.notify(); });
+  }
+
   // Builds (or rebuilds, when stale) the file list the search filters. Old results stay meanwhile.
   ensureIndex(cx) {
     const context = this.context;
@@ -462,6 +478,7 @@ export default class Files extends View {
   }
 
   render(cx) {
+    this.syncQuery(cx);
     if (key() !== this.context?.key) this.refresh(cx);
     const t = theme(), file = this.file, buf = file ? this.buffers.get(file) : null;
     const button = (id, label, onClick) => h_flex().id(id).h(24).px(8).flex_none().items_center().rounded(6).cursor_pointer()

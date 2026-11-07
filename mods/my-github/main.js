@@ -5,11 +5,13 @@ import { v_flex, h_flex, TextView } from "gpui-base";
 import { spaces, panes, focused, agents, exec, run, notify, theme, layout, openOverlay } from "herdr";
 import { listArgs, viewArgs, sortByUpdated, ciSummary, reviewLabel, stateLabel, relativeTime, agentPrompt, tabName, ghError, emptyText, dragText } from "./logic.js";
 
+import { followedCwd } from "./where.js";
+
+const lastCwd = new Map(); // space id → its last terminal folder
 function location() {
   const space = spaces().find(s => s.active), f = focused();
-  const pane = f?.pane ? panes().find(p => p.pane === f.pane) : null;
   const on = f?.pane === null ? (f.terminal?.includes("/") ? f.terminal.split("/")[0] : null) : space?.machine ?? null;
-  return { cwd: pane?.cwd || f?.cwd || space?.folder, on, space: space?.id };
+  return { cwd: followedCwd(lastCwd, space, f, panes()), on, space: space?.id };
 }
 const key = () => JSON.stringify(location());
 const REFRESH_MS = 120000;

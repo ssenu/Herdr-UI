@@ -8,11 +8,13 @@ import {
   sortItems, groupBySource, emptyText, servers, claudeMcp, pluginRoots, codexMcp, serverSummary, configLines, mapLimit,
 } from "./logic.js";
 
+import { followedCwd } from "./where.js";
+
+const lastCwd = new Map(); // space id → its last terminal folder
 function location() {
   const space = spaces().find(s => s.active), f = focused();
-  const pane = f?.pane ? panes().find(p => p.pane === f.pane) : null;
   const on = f?.pane === null ? (f.terminal?.includes("/") ? f.terminal.split("/")[0] : null) : space?.machine ?? null;
-  return { cwd: pane?.cwd || f?.cwd || space?.folder, on };
+  return { cwd: followedCwd(lastCwd, space, f, panes()), on };
 }
 const bare = a => (typeof a === "string" ? a.slice(a.lastIndexOf("/") + 1) : a);
 const sameAddress = (a, b) => a === b || (!a?.includes("/") !== !b?.includes("/") && bare(a) === bare(b));

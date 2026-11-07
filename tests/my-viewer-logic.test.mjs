@@ -120,6 +120,40 @@ test("restoreState: no draft, same disk, changed disk, stale or foreign draft", 
   assert.deepEqual(L.restoreState(draft("mine", "h", "C:/A"), "c:\\a", null).text, "mine");
 });
 
+test("where.js copies stay identical", () => {
+  const where = readFileSync(file("my-files/where.js"), "utf8");
+  for (const m of ["my-github", "my-plugins", "my-sessions", "my-new-menu"]) assert.equal(readFileSync(file(`${m}/where.js`), "utf8"), where, m);
+});
+
+test("followedCwd: a viewer tab keeps the space's last terminal folder", async () => {
+  const { followedCwd } = await import(file("my-files/where.js").href);
+  const space = { id: "s1", folder: "C:\\Users\\me", tabs: [{ id: "t1" }, { id: "t2" }] };
+  const panes = [
+    { pane: "p1", tab: "t1", cwd: "C:\\repo" },
+    { pane: "p2", tab: "t2", mod: "my-viewer", cwd: null },
+    { pane: "p3", tab: "t9", cwd: "C:\\other-space" },
+  ];
+  const memory = new Map();
+  assert.equal(followedCwd(memory, space, { pane: "p1", cwd: "C:\\repo" }, panes), "C:\\repo");
+  assert.equal(followedCwd(memory, space, { pane: "p2", cwd: "C:\\Users\\me" }, panes), "C:\\repo"); // remembered
+  // Nothing remembered: a terminal of this space, not of another one.
+  assert.equal(followedCwd(new Map(), space, { pane: "p2", cwd: null }, panes), "C:\\repo");
+  assert.equal(followedCwd(new Map(), space, { pane: "p2", cwd: null }, panes.slice(1)), "C:\\Users\\me");
+  // Layout terminal blocks report no pane, only a folder.
+  assert.equal(followedCwd(memory, space, { pane: null, cwd: "C:\\block" }, panes), "C:\\block");
+  assert.equal(followedCwd(new Map(), null, null, []), null);
+});
+
+test("switchQuery: each space keeps its own search", async () => {
+  const { switchQuery } = await import(file("my-files/logic.js").href);
+  const queries = new Map();
+  assert.equal(switchQuery(queries, undefined, "s1", ""), ""); // first look: empty
+  assert.equal(switchQuery(queries, "s1", "s2", "main"), ""); // a new space starts empty
+  assert.equal(switchQuery(queries, "s2", "s1", "other"), "main"); // back: its own search
+  assert.equal(switchQuery(queries, "s1", "s2", "main"), "other");
+  assert.equal(switchQuery(queries, "s2", null, ""), "");
+});
+
 test("dirtyName adds and removes one marker", () => {
   assert.equal(L.dirtyName("a.txt", true), "● a.txt");
   assert.equal(L.dirtyName("● a.txt", true), "● a.txt");

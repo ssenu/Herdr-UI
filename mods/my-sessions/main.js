@@ -7,11 +7,13 @@ import { encodeProject, worktreePaths, sessionLines, liveIds, toSessions, pickSe
 
 const REFRESH_MS = 30000, SHOW_LIMIT = 100;
 
+import { followedCwd } from "./where.js";
+
+const lastCwd = new Map(); // space id → its last terminal folder
 function location() {
   const space = spaces().find(s => s.active), f = focused();
-  const pane = f?.pane ? panes().find(p => p.pane === f.pane) : null;
   const on = f?.pane === null ? (f.terminal?.includes("/") ? f.terminal.split("/")[0] : null) : space?.machine ?? null;
-  return { cwd: pane?.cwd || f?.cwd || space?.folder, on };
+  return { cwd: followedCwd(lastCwd, space, f, panes()), on };
 }
 const key = () => JSON.stringify(location());
 const base = p => String(p ?? "").replace(/[\\/]+$/, "").split(/[\\/]/).pop() || String(p ?? "");

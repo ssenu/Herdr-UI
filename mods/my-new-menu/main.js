@@ -7,11 +7,13 @@ import { tabArgs, newToken } from "./viewer-open.js";
 const KNOWN = "new-menu.agents";
 
 // Where the viewer opens: the focused pane's folder and machine, as the Files panel works them out.
+import { followedCwd } from "./where.js";
+
+const lastCwd = new Map(); // space id → its last terminal folder
 function location() {
   const space = spaces().find(s => s.active), f = focused();
-  const pane = f?.pane ? panes().find(p => p.pane === f.pane) : null;
   const on = f?.pane === null ? (f.terminal?.includes("/") ? f.terminal.split("/")[0] : null) : space?.machine ?? null;
-  return { root: pane?.cwd || f?.cwd || space?.folder || null, on };
+  return { root: followedCwd(lastCwd, space, f, panes()), on };
 }
 
 function shortcut(name) {
