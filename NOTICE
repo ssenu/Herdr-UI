@@ -10,5 +10,7 @@ licensed under the Apache License, Version 2.0:
   drag-a-row-to-terminal path pasting.
 - mods/my-tabs: modified copy of Herdr's built-in "tabs" mod (version 0.1.12).
   Added: a GitHub panel button.
+- mods/my-status: modified copy of Herdr's built-in "workspace-status" mod (version 0.1.13).
+  Added: CPU, RAM and GPU figures and a recent-usage dashboard.
 
 All other files are original work, licensed under the Apache License 2.0.

@@ -17,7 +17,7 @@ if (-not (Test-Path $app)) {
 }
 
 # 1. Mods
-$mods = @("my-files", "my-files-drag", "my-files-open", "my-github", "my-plugins", "my-sessions", "my-tabs")
+$mods = @("my-files", "my-files-drag", "my-files-open", "my-github", "my-plugins", "my-sessions", "my-status", "my-tabs")
 New-Item -ItemType Directory -Force (Join-Path $app "mods") | Out-Null
 foreach ($m in $mods) {
   $to = Join-Path $app "mods\$m"
@@ -62,6 +62,7 @@ function Mod-Of($node) { if ($node.content -and $node.content.PSObject.Propertie
 $filesBlock = Find-Node $doc { param($n) (Mod-Of $n) -in @("files", "my-files") }
 $tabsBlock  = Find-Node $doc { param($n) (Mod-Of $n) -in @("tabs", "my-tabs") }
 $panelBody  = Find-Node $doc { param($n) $n.id -eq "panel-body" }
+$statusBlock = Find-Node $doc { param($n) (Mod-Of $n) -in @("workspace-status", "my-status") }
 if (-not $filesBlock -or -not $tabsBlock -or -not $panelBody) {
   Write-Host "이 레이아웃에서 Files 칸, 탭 바, 오른쪽 패널(panel-body)을 찾지 못했어요. README의 수동 설치를 보세요." -ForegroundColor Yellow
   exit 1
@@ -72,6 +73,7 @@ Copy-Item $file "$file.bak-$stamp" -Force
 
 $filesBlock.content.mod = "my-files"
 $tabsBlock.content.mod = "my-tabs"
+if ($statusBlock) { $statusBlock.content.mod = "my-status" }
 if (-not (@($panelBody.children) | Where-Object { $_.id -eq "github" })) {
   $github = [pscustomobject]@{ id = "github"; type = "block"; content = [pscustomobject]@{ mod = "my-github" } }
   $panelBody.children = @($panelBody.children) + $github

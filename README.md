@@ -11,6 +11,8 @@
 | `my-github` | 현재 저장소의 GitHub 이슈·PR 패널 (gh CLI 사용) |
 | `my-plugins` | 지금 폴더에서 Claude Code·Codex가 보는 MCP 서버와 스킬 목록 (읽기 전용) |
 | `my-sessions` | 지금 저장소의 Claude Code 세션 목록. 누르면 새 탭에서 다시 열기 |
+| `my-status` | 기본 하단 바의 복제본. 이 PC의 CPU·RAM·GPU 표시 |
+| `my-status-dash` | 하단 바 수치에 마우스를 올리면 뜨는 최근 5분 그래프 |
 | `my-tabs` | 기본 탭 바의 복제본. Files · Changes 옆에 GitHub · Plugin · Session 버튼 추가 |
 
 ## 기능
@@ -69,6 +71,12 @@
 - 세션 파일의 앞뒤 일부만 읽어 제목·폴더·브랜치만 가져옵니다. 대화 내용은 읽어 오지 않습니다. 사용자 메시지가 없는 빈 세션은 목록에서 뺍니다.
 - 원격 스페이스에서는 그 머신의 세션을 읽습니다. 패널이 보이는 동안 30초마다 다시 읽고, ⟳ 로 바로 새로고침합니다. 같은 저장소 안에서 칸을 옮기면 목록을 유지한 채 다시 읽습니다.
 
+### 시스템 모니터 (`my-status`)
+
+- 하단 바 오른쪽에 **이 PC**의 `CPU 13%  RAM 19.7/31.4GB  GPU 8%` 를 5초마다 갱신해 보여 줍니다. 사용률 90% 이상이면 강조색으로 바뀝니다. Windows에서만 표시합니다.
+- 원격 스페이스에서도 이 PC의 값이며, 앞에 `이 PC` 가 붙습니다.
+- 수치에 마우스를 올리면 CPU·RAM·GPU의 현재 값과 **최근 5분 막대그래프**가 뜹니다. 그래프는 앱을 켠 뒤부터 쌓입니다.
+
 ## 요구 사항
 
 - Herdr 앱 (0.1.13에서 확인). 설치 스크립트는 Windows(PowerShell)용입니다. 다른 OS는 [수동 설치](#수동-설치)를 보세요.
@@ -89,10 +97,11 @@ cd Herdr-UI
 
 설치 스크립트가 하는 일:
 
-1. `mods\` 의 일곱 mod를 `~\.config\herdr-app\mods\` 에 복사합니다.
+1. `mods\` 의 아홉 mod를 `~\.config\herdr-app\mods\` 에 복사합니다.
 2. 레이아웃 `my-layout` 을 고칩니다. 없으면 기본 레이아웃 `main` 을 `my-layout` 으로 복제한 뒤 고칩니다.
    - Files 칸: `files` → `my-files`
    - 탭 바: `tabs` → `my-tabs`
+   - 하단 바: `workspace-status` → `my-status`
    - 오른쪽 패널(`panel-body`)에 `github` 칸(`my-github`) 추가
    - 오른쪽 패널(`panel-body`)에 `plugins` 칸(`my-plugins`) 추가
    - 오른쪽 패널(`panel-body`)에 `sessions` 칸(`my-sessions`) 추가
@@ -113,10 +122,11 @@ mod와 레이아웃은 저장하면 바로 적용되므로 앱을 다시 켤 필
 
 ## 수동 설치
 
-1. `mods/` 안의 일곱 폴더를 `~/.config/herdr-app/mods/` 에 복사합니다.
+1. `mods/` 안의 아홉 폴더를 `~/.config/herdr-app/mods/` 에 복사합니다.
 2. 쓰는 레이아웃(`~/.config/herdr-app/layouts/<이름>.json`, 기본 레이아웃이면 먼저 `herdr-app do layout.clone --name main --as my-layout`)에서:
    - `"mod": "files"` → `"mod": "my-files"`
    - `"mod": "tabs"` → `"mod": "my-tabs"`
+   - `"mod": "workspace-status"` → `"mod": "my-status"`
    - `"id": "panel-body"` 의 `children` 끝에 추가:
      ```json
      { "id": "github", "type": "block", "content": { "mod": "my-github" } },
@@ -136,8 +146,8 @@ mod는 덮어씁니다. 레이아웃은 백업한 뒤 빠진 칸만 추가하므
 
 ## 제거
 
-1. 백업(`layouts\my-layout.json.bak-<시각>`)을 `my-layout.json` 으로 되돌리거나, 위 다섯 가지를 원래대로(`files`, `tabs`, github·plugins·sessions 칸 삭제) 고칩니다.
-2. `~\.config\herdr-app\mods\` 에서 `my-files`, `my-files-drag`, `my-files-open`, `my-github`, `my-plugins`, `my-sessions`, `my-tabs` 폴더를 지웁니다.
+1. 백업(`layouts\my-layout.json.bak-<시각>`)을 `my-layout.json` 으로 되돌리거나, 위 여섯 가지를 원래대로(`files`, `tabs`, `workspace-status`, github·plugins·sessions 칸 삭제) 고칩니다.
+2. `~\.config\herdr-app\mods\` 에서 `my-files`, `my-files-drag`, `my-files-open`, `my-github`, `my-plugins`, `my-sessions`, `my-status`, `my-status-dash`, `my-tabs` 폴더를 지웁니다.
 
 ## 알려진 한계
 
@@ -145,11 +155,12 @@ mod는 덮어씁니다. 레이아웃은 백업한 뒤 빠진 칸만 추가하므
 - 원격 파일은 패널에서 편집할 수 없습니다(nano로 엽니다). 저장하지 않은 편집 내용은 앱을 끄면 사라집니다.
 - 파일 찾기는 폴더당 처음 50,000개 파일에서만 찾고, 결과는 200개까지 보여 줍니다. 링크·정션 폴더 안은 찾지 않습니다.
 - `.md` 보기에서 상대경로 이미지·링크는 동작하지 않습니다.
-- `my-files`, `my-tabs` 는 기본 mod의 복제본이라 Herdr가 기본 `files`/`tabs` 를 업데이트해도 자동으로 따라가지 않습니다.
+- `my-files`, `my-tabs`, `my-status` 는 기본 mod의 복제본이라 Herdr가 기본 `files`/`tabs`/`workspace-status` 를 업데이트해도 자동으로 따라가지 않습니다.
 - 탭 바를 `my-tabs` 로 바꾸면 스페이스별로 기억하던 패널 선택이 한 번 초기화됩니다.
 - Plugins 패널은 읽기 전용입니다(켜기/끄기·삭제는 각 에이전트에서: Claude는 `/mcp`, `claude mcp remove`). Codex 시스템 스킬과 `/etc/codex/skills` 는 보이지 않습니다. 설정을 바꾼 뒤 열린 세션에 반영되는지는 에이전트에 달려 있습니다.
 - Plugins 패널은 Claude 플러그인이 제공하는 MCP 서버와 꺼 둔 플러그인/서버 상태(`enabledPlugins`, `disabledMcpServers`)를 반영하지 않습니다. Codex의 `CODEX_HOME`은 무시하고 `~/.codex`를 읽으며, 원격 스페이스는 유닉스(sh) 머신으로 가정합니다.
 - Sessions 패널의 초록 점은 목록을 다시 읽을 때 바뀌므로 최대 30초 늦을 수 있습니다(⟳ 로 바로 반영). Claude Code의 내부 파일 형식에 기대므로, 형식이 바뀌면 제목이나 초록 점이 안 보일 수 있습니다. Codex 세션은 보이지 않습니다. 탭이 열리는 머신에 `claude` 명령이 있어야 하고, 원격 스페이스는 유닉스(sh) 머신으로 가정합니다. 후보 폴더(저장소 이름으로 시작하는 폴더 포함)에서 최근 파일 300개만 읽으므로, 이름이 비슷한 폴더의 세션이 아주 많으면 일부가 안 보일 수 있습니다. 드라이브 루트나 `/` 를 저장소로 쓰면 하위 폴더의 세션은 보이지 않습니다. 실제 원격 머신과 macOS, 시작 폴더가 지워진 세션을 여는 경우는 아직 확인하지 않았습니다.
+- 시스템 모니터는 Windows에서만, 항상 이 PC의 값을 보여 줍니다. 5초마다 PowerShell을 한 번 실행합니다. 그래프는 메모리에만 있어 앱을 끄면 사라집니다. GPU 값은 작업 관리자와 조금 다를 수 있습니다.
 
 ## 개발
 
@@ -166,4 +177,4 @@ herdr-app check $env:USERPROFILE\.config\herdr-app\mods\my-files   # 설치된 m
 ## 라이선스
 
 Apache License 2.0 — [LICENSE](LICENSE), [NOTICE](NOTICE).
-`my-files` 와 `my-tabs` 는 Herdr에 들어 있는 `files`, `tabs` mod(Apache-2.0)를 복제해 수정한 것입니다.
+`my-files`, `my-tabs`, `my-status` 는 Herdr에 들어 있는 `files`, `tabs`, `workspace-status` mod(Apache-2.0)를 복제해 수정한 것입니다.
