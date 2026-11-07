@@ -399,7 +399,7 @@ export default class Files extends View {
       const path = prefix ? `${prefix}/${entry.name}` : entry.name, open = this.folders.has(path), mark = this.marks[`${this.root}/${path}`];
       const dirty = !entry.dir && this.buffers.get(path)?.dirty;
       out.push(h_flex().id(`file-${path}`).h(28).flex_none().pl(8 + depth * 18).pr(8).gap(7).items_center().rounded(7).cursor_pointer().hover(s => s.bg(t.hover))
-        .on_mouse_down("left", () => { this.drag = { text: quoteForPrompt(this.absolute(path)), name: entry.name, dir: entry.dir }; })
+        .on_mouse_down("left", () => { this.drag = { text: quoteForPrompt(this.absolute(path)), path: this.absolute(path), on: this.on, name: entry.name, dir: entry.dir }; })
         .on_click((_e, cx) => { if (entry.dir) this.toggle(path, cx); else { this.show(path, cx); cx.notify(); } })
         .child(entry.dir ? svg(`mods/my-files/chevron-${open ? "down" : "right"}.svg`).size(12).flex_none().text_color(t.dim) : div().w(12).flex_none())
         .child(svg(`mods/my-files/${entry.dir ? "folder" : "file"}.svg`).size(14).flex_none().text_color(t.muted))
@@ -419,7 +419,7 @@ export default class Files extends View {
     return h_flex().id(`found-${path}`).h(28).flex_none().px(8).gap(7).items_center().rounded(7).cursor_pointer()
       .when(i === this.at, el => el.bg(t.selected))
       .hover(s => s.bg(t.hover))
-      .on_mouse_down("left", () => { this.drag = { text: quoteForPrompt(this.absolute(path)), name, dir: false }; })
+      .on_mouse_down("left", () => { this.drag = { text: quoteForPrompt(this.absolute(path)), path: this.absolute(path), on: this.on, name, dir: false }; })
       .on_click((_e, cx) => { this.at = i; this.show(path, cx); cx.notify(); })
       .child(svg("mods/my-files/file.svg").size(14).flex_none().text_color(t.muted))
       .child(h_flex().min_w(0).flex_shrink(1).overflow_hidden()

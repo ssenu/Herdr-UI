@@ -1,31 +1,47 @@
 // Drag layer for my-files: a transparent full-window overlay opened when a row is dragged out of
-// the Files panel. The name follows the pointer; releasing outside the panel types props.text
-// into the focused terminal (clipboard + terminal.paste), releasing back over the panel cancels.
+// the Files panel. The name follows the pointer. Releasing back over the panel cancels; over the tab
+// bar, a file opens in a viewer tab; anywhere else, props.text is typed into the focused terminal
+// (clipboard + terminal.paste).
 import { View, div } from "gpui-kit";
 import { h_flex } from "gpui-base";
-import { props, closeOverlay, run, theme, notify } from "herdr";
-
-const inside = (b, p) => b && p.x >= b.x && p.x <= b.x + b.width && p.y >= b.y && p.y <= b.y + b.height;
+import { props, closeOverlay, run, theme, notify, shared, spaces } from "herdr";
+import { BOUNDS_KEY, OPEN_KEY, dropAction, openCommands, newToken } from "./viewer-open.js";
 
 export default class MyFilesDrag extends View {
   init() { this.pos = null; this.done = false; }
 
+  action(position) {
+    const { panel, dir } = props() ?? {};
+    return dropAction({ position, panel, tabs: shared(BOUNDS_KEY), dir });
+  }
+
   finish(position, cx) {
     if (this.done) return;
     this.done = true; cx.notify(); // hides the label at once
-    const { text, panel, overlay } = props() ?? {};
+    const { text, path, on, overlay } = props() ?? {};
     try {
+      const action = this.action(position);
       // ponytail: lands in the focused terminal, not the one under the pointer (panes() has no bounds),
       // and replaces the clipboard.
-      if (text && position && !inside(panel, position)) {
+      if (action === "paste" && text) {
         cx.write_to_clipboard(text);
         run("terminal.paste", {});
+      } else if (action === "open" && path) {
+        const list = spaces(), space = list.find(s => s.active)?.id;
+        for (const [name, args] of openCommands({ path, on: on ?? null, root: null, space }, shared(OPEN_KEY), list, newToken(Date.now(), Math.random()))) run(name, args);
+      } else if (action === "folder") {
+        notify({ title: "폴더는 열 수 없어요", level: "info", timeout: 3000 });
       }
     } catch (e) {
-      notify({ title: "경로를 붙여넣지 못했어요", body: String(e), level: "error", timeout: 3000 });
+      notify({ title: "놓은 곳에 넣지 못했어요", body: String(e), level: "error", timeout: 3000 });
     } finally {
       if (overlay) closeOverlay(overlay);
     }
+  }
+
+  hint() {
+    const action = this.action(this.pos);
+    return action === "open" ? "· 놓으면 새 탭으로 열기" : action === "folder" ? "· 폴더는 열 수 없어요" : action === "cancel" ? "· 놓으면 취소" : "· 놓으면 입력";
   }
 
   render() {
@@ -39,6 +55,6 @@ export default class MyFilesDrag extends View {
         h_flex().absolute().left(this.pos.x + 14).top(this.pos.y + 12).h(26).px(10).gap(6).items_center()
           .rounded(7).bg(t.popover).border_1().border_color(t.accent).text_color(t.foreground).text_size(12)
           .child(icon ?? (dir ? "📁" : "📄")).child(name)
-          .child(div().text_color(t.dim).child("· 놓으면 입력"))));
+          .child(div().text_color(t.dim).child(this.hint()))));
   }
 }

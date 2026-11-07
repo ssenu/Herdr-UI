@@ -17,11 +17,13 @@ if (-not (Test-Path $app)) {
 }
 
 # 1. Mods
-$mods = @("my-files", "my-files-drag", "my-files-open", "my-github", "my-plugins", "my-sessions", "my-status", "my-status-dash", "my-tabs")
+$mods = @("my-files", "my-files-drag", "my-files-open", "my-github", "my-new-menu", "my-plugins", "my-sessions", "my-status", "my-status-dash", "my-tabs", "my-viewer")
 New-Item -ItemType Directory -Force (Join-Path $app "mods") | Out-Null
 foreach ($m in $mods) {
   $to = Join-Path $app "mods\$m"
   New-Item -ItemType Directory -Force $to | Out-Null
+  # mod.json first: the app adds a new mod folder without one to the layout as a block.
+  Copy-Item (Join-Path $src "mods\$m\mod.json") $to -Force
   Copy-Item (Join-Path $src "mods\$m\*") $to -Recurse -Force
 }
 Write-Host "mod 복사 완료: $($mods -join ', ')" -ForegroundColor Green

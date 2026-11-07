@@ -13,4 +13,7 @@ licensed under the Apache License, Version 2.0:
 - mods/my-status: modified copy of Herdr's built-in "workspace-status" mod (version 0.1.13).
   Added: CPU, RAM and GPU figures and a recent-usage dashboard.
 
+- mods/my-new-menu: modified copy of Herdr's built-in "new-menu" mod (version 0.1.13).
+  Added: a file viewer entry.
+
 All other files are original work, licensed under the Apache License 2.0.

@@ -1,7 +1,7 @@
 # Herdr-UI
 
 [Herdr](https://github.com/herdrdev/herdr) 데스크톱 앱을 더 편하게 쓰기 위한 mod 모음입니다.
-오른쪽 패널의 Files를 편집 가능한 패널로 바꾸고, GitHub 이슈·PR 패널, MCP·스킬 목록 패널, Claude 세션 목록 패널, 하단 바 시스템 모니터를 추가합니다.
+오른쪽 패널의 Files를 편집 가능한 패널로 바꾸고, GitHub 이슈·PR 패널, MCP·스킬 목록 패널, Claude 세션 목록 패널, 파일 뷰어 탭, 하단 바 시스템 모니터를 추가합니다.
 
 | mod | 하는 일 |
 |---|---|
@@ -11,6 +11,8 @@
 | `my-github` | 현재 저장소의 GitHub 이슈·PR 패널 (gh CLI 사용) |
 | `my-plugins` | 지금 폴더에서 Claude Code·Codex가 보는 MCP 서버와 스킬 목록 (읽기 전용) |
 | `my-sessions` | 지금 저장소의 Claude Code 세션 목록. 누르면 새 탭에서 다시 열기 |
+| `my-new-menu` | 기본 `+` 메뉴의 복제본. "파일 뷰어" 항목 추가 |
+| `my-viewer` | 터미널처럼 탭으로 열리는 파일 뷰어·편집기 |
 | `my-status` | 기본 하단 바의 복제본. 이 PC의 CPU·RAM·GPU 표시 |
 | `my-status-dash` | 하단 바 수치에 마우스를 올리면 뜨는 최근 5분 그래프 |
 | `my-tabs` | 기본 탭 바의 복제본. Files · Changes 옆에 GitHub · Plugin · Session 버튼 추가 |
@@ -29,6 +31,15 @@
 - **[바탕화면]**: 헤더의 칩을 누르면 포커스된 칸 대신 바탕화면 폴더를 보여 줍니다. 다시 누르면 원래대로.
 - **파일 찾기**: 목록 위 입력칸에 이름 일부를 치면 지금 폴더 아래 **모든 파일**(`.git` 제외)에서 퍼지 검색합니다(`mainjs` → `mods/my-files/main.js`). 공백으로 나누면 조각이 모두 맞아야 합니다. ↑/↓ 선택, Enter 열기, Esc 지우기. 결과 행도 클릭·드래그·`⋯` 가 트리와 같습니다. 처음 입력할 때 목록을 만들고, 폴더 안의 파일이 바뀌면 다음 입력 때 다시 만듭니다(원격은 1분이 지난 뒤의 입력 때).
 - **드래그로 경로 넣기**: 파일·폴더를 누른 채 패널 밖으로 끌어 터미널 위에서 놓으면, 마지막으로 선택한 터미널의 프롬프트에 **절대경로**가 입력됩니다(Enter는 누르지 않음). 공백 등이 있으면 `"따옴표"`로 감쌉니다. 패널 위로 돌아와 놓으면 취소.
+
+### 파일 뷰어 (`my-viewer`)
+
+- **탭으로 열기**: 탭 바의 **`+` → 파일 뷰어**를 누르면 지금 폴더에서 파일을 찾는 탭이 열립니다. 고르면 그 탭에 파일이 열립니다.
+- **탭 바에 드롭**: Files 패널에서 파일을 끌어 **탭 바** 위에 놓으면 새 탭으로 열립니다. 이름표에 `놓으면 새 탭으로 열기` 가 보입니다. 그 밖의 곳에 놓으면 지금처럼 터미널에 경로가 입력됩니다. 폴더는 탭 바에 놓아도 열리지 않습니다.
+- 탭 하나에 파일 하나만 엽니다. 이미 열린 파일을 다시 열면 그 탭으로 이동합니다.
+- **편집**: 코드와 텍스트를 고치고 **Ctrl+S**로 저장합니다. `.md` 는 **[보기] [편집]** 을 오갑니다. 400,000자가 넘는 파일과 원격 파일은 읽기 전용이며 **[nano로 열기]** 가 있습니다.
+- **표시할 수 없는 파일**(이미지, PDF, 압축 파일 등)은 **[외부 프로그램으로 열기]** 를 보여 줍니다.
+- **초안**: 저장하지 않은 내용은 1초쯤 뒤 초안으로 보관됩니다(`<앱 폴더>\data\my-viewer\drafts`). 탭을 닫거나 앱을 꺼도 남아 있고, 그 파일을 다시 열면 `●` 와 함께 복원됩니다. 그사이 원본이 바뀌었으면 **[초안 유지] [디스크 버전 불러오기]** 중 고릅니다.
 
 ### GitHub 패널 (`my-github`)
 
@@ -97,7 +108,7 @@ cd Herdr-UI
 
 설치 스크립트가 하는 일:
 
-1. `mods\` 의 아홉 mod를 `~\.config\herdr-app\mods\` 에 복사합니다.
+1. `mods\` 의 열한 mod를 `~\.config\herdr-app\mods\` 에 복사합니다.
 2. 레이아웃 `my-layout` 을 고칩니다. 없으면 기본 레이아웃 `main` 을 `my-layout` 으로 복제한 뒤 고칩니다.
    - Files 칸: `files` → `my-files`
    - 탭 바: `tabs` → `my-tabs`
@@ -122,7 +133,7 @@ mod와 레이아웃은 저장하면 바로 적용되므로 앱을 다시 켤 필
 
 ## 수동 설치
 
-1. `mods/` 안의 아홉 폴더를 `~/.config/herdr-app/mods/` 에 복사합니다.
+1. `mods/` 안의 열한 폴더를 `~/.config/herdr-app/mods/` 에 복사합니다.
 2. 쓰는 레이아웃(`~/.config/herdr-app/layouts/<이름>.json`, 기본 레이아웃이면 먼저 `herdr-app do layout.clone --name main --as my-layout`)에서:
    - `"mod": "files"` → `"mod": "my-files"`
    - `"mod": "tabs"` → `"mod": "my-tabs"`
@@ -147,7 +158,8 @@ mod는 덮어씁니다. 레이아웃은 백업한 뒤 빠진 칸만 추가하므
 ## 제거
 
 1. 백업(`layouts\my-layout.json.bak-<시각>`)을 `my-layout.json` 으로 되돌리거나, 위 여섯 가지를 원래대로(`files`, `tabs`, `workspace-status`, github·plugins·sessions 칸 삭제) 고칩니다.
-2. `~\.config\herdr-app\mods\` 에서 `my-files`, `my-files-drag`, `my-files-open`, `my-github`, `my-plugins`, `my-sessions`, `my-status`, `my-status-dash`, `my-tabs` 폴더를 지웁니다.
+2. `~\.config\herdr-app\mods\` 에서 `my-files`, `my-files-drag`, `my-files-open`, `my-github`, `my-new-menu`, `my-plugins`, `my-sessions`, `my-status`, `my-status-dash`, `my-tabs`, `my-viewer` 폴더를 지웁니다.
+3. 뷰어 초안까지 지우려면 `~\.config\herdr-app\data\my-viewer\` 를 지웁니다.
 
 ## 알려진 한계
 
@@ -155,11 +167,12 @@ mod는 덮어씁니다. 레이아웃은 백업한 뒤 빠진 칸만 추가하므
 - 원격 파일은 패널에서 편집할 수 없습니다(nano로 엽니다). 저장하지 않은 편집 내용은 앱을 끄면 사라집니다.
 - 파일 찾기는 폴더당 처음 50,000개 파일에서만 찾고, 결과는 200개까지 보여 줍니다. 링크·정션 폴더 안은 찾지 않습니다.
 - `.md` 보기에서 상대경로 이미지·링크는 동작하지 않습니다.
-- `my-files`, `my-tabs`, `my-status` 는 기본 mod의 복제본이라 Herdr가 기본 `files`/`tabs`/`workspace-status` 를 업데이트해도 자동으로 따라가지 않습니다.
+- `my-files`, `my-tabs`, `my-status`, `my-new-menu` 는 기본 mod의 복제본이라 Herdr가 기본 `files`/`tabs`/`workspace-status`/`new-menu` 를 업데이트해도 자동으로 따라가지 않습니다.
 - 탭 바를 `my-tabs` 로 바꾸면 스페이스별로 기억하던 패널 선택이 한 번 초기화됩니다.
 - Plugins 패널은 읽기 전용입니다(켜기/끄기·삭제는 각 에이전트에서: Claude는 `/mcp`, `claude mcp remove`). Codex 시스템 스킬과 `/etc/codex/skills` 는 보이지 않습니다. 설정을 바꾼 뒤 열린 세션에 반영되는지는 에이전트에 달려 있습니다.
 - Plugins 패널은 Claude 플러그인이 제공하는 MCP 서버와 꺼 둔 플러그인/서버 상태(`enabledPlugins`, `disabledMcpServers`)를 반영하지 않습니다. Codex의 `CODEX_HOME`은 무시하고 `~/.codex`를 읽으며, 원격 스페이스는 유닉스(sh) 머신으로 가정합니다.
 - Sessions 패널의 초록 점은 목록을 다시 읽을 때 바뀌므로 최대 30초 늦을 수 있습니다(⟳ 로 바로 반영). Claude Code의 내부 파일 형식에 기대므로, 형식이 바뀌면 제목이나 초록 점이 안 보일 수 있습니다. Codex 세션은 보이지 않습니다. 탭이 열리는 머신에 `claude` 명령이 있어야 하고, 원격 스페이스는 유닉스(sh) 머신으로 가정합니다. 후보 폴더(저장소 이름으로 시작하는 폴더 포함)에서 최근 파일 300개만 읽으므로, 이름이 비슷한 폴더의 세션이 아주 많으면 일부가 안 보일 수 있습니다. 드라이브 루트나 `/` 를 저장소로 쓰면 하위 폴더의 세션은 보이지 않습니다. 실제 원격 머신과 macOS, 시작 폴더가 지워진 세션을 여는 경우는 아직 확인하지 않았습니다.
+- 파일 뷰어는 이미지·PDF를 탭에서 보여 주지 않습니다(외부 프로그램으로 엽니다). 탭을 닫을 때 묻지 않는 대신 초안을 복원합니다. 초안은 그 PC에만 남습니다. 1 MiB가 넘는 파일은 읽지 못합니다. 탭 바에 드롭하기 전까지 마우스가 탭 바 위를 한 번도 지나지 않았으면 창 맨 위 40px을 탭 바로 칩니다.
 - 시스템 모니터는 Windows에서만, 항상 이 PC의 값을 보여 줍니다. 5초마다 PowerShell을 한 번 실행합니다. 그래프는 메모리에만 있어 앱을 끄면 사라집니다. GPU 값은 작업 관리자와 조금 다를 수 있습니다.
 
 ## 개발
@@ -177,4 +190,4 @@ herdr-app check $env:USERPROFILE\.config\herdr-app\mods\my-files   # 설치된 m
 ## 라이선스
 
 Apache License 2.0 — [LICENSE](LICENSE), [NOTICE](NOTICE).
-`my-files`, `my-tabs`, `my-status` 는 Herdr에 들어 있는 `files`, `tabs`, `workspace-status` mod(Apache-2.0)를 복제해 수정한 것입니다.
+`my-files`, `my-tabs`, `my-status`, `my-new-menu` 는 Herdr에 들어 있는 `files`, `tabs`, `workspace-status`, `new-menu` mod(Apache-2.0)를 복제해 수정한 것입니다.

@@ -1,6 +1,6 @@
 import { View, div, svg, image } from "gpui-kit";
 import { h_flex } from "gpui-base";
-import { spaces, panes, run, openOverlay, theme, window, shared, layout, settings } from "herdr";
+import { spaces, panes, run, openOverlay, theme, window, shared, setShared, layout, settings } from "herdr";
 
 function find(node, id) {
   if (node?.id === id) return node;
@@ -43,6 +43,15 @@ export default class Tabs extends View {
     if (this.panels[space.id] === now) return;
     this.panels[space.id] = now;
     localStorage.setItem("panels", JSON.stringify(this.panels));
+  }
+
+  // The bar's box in window coordinates, for a file dropped on it. Sent only when it changes:
+  // a shared value re-renders every mod.
+  measure() {
+    if (!this.origin || !this.size) return;
+    const bounds = { x: this.origin.x, y: this.origin.y, width: this.size.width, height: this.size.height };
+    if (JSON.stringify(bounds) === JSON.stringify(shared("my-tabs.bounds"))) return;
+    setShared("my-tabs.bounds", bounds);
   }
 
   render() {
@@ -91,9 +100,11 @@ export default class Tabs extends View {
     };
     return h_flex().size_full().min_w(0).px(10).pl(lightsPadding).gap(3).items_center().bg(t.chrome).border_b(1).border_color(t.border)
       .on_mouse_up("left", () => { this.pressed = null; })
+      .on_mouse_move(e => { if (e.local_position) { this.origin = { x: e.position.x - e.local_position.x, y: e.position.y - e.local_position.y }; this.measure(); } })
+      .on_size_change(size => { this.size = size; })
       .on_scroll_wheel(e => { if (Math.abs(e.delta.y) >= 1) run(e.delta.y > 0 ? "tab.prev" : "tab.next"); })
       .child(h_flex().id("tab-scroll").flex_1().min_w(0).h_full().items_center().gap(3).overflow_x_scrollbar().children(shown.map(item)))
-      .child(button("tab-new", "+", () => openOverlay({ mod: "new-menu", kind: "popup", width: 250, height: 512 })))
+      .child(button("tab-new", "+", () => openOverlay({ mod: "my-new-menu", kind: "popup", width: 250, height: 543 })))
       .when(enabled.includes("files"), el => el.child(panelButton("files", "Files", "mods/files/file.svg")))
       .when(enabled.includes("changes"), el => el.child(panelButton("changes", "Changes", "mods/changes/changes.svg")))
       .when(enabled.includes("github"), el => el.child(panelButton("github", "GitHub", "mods/my-github/github.svg")))
