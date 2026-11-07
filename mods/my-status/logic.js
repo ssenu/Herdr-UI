@@ -90,8 +90,8 @@ export function dashRows(metrics, history, barHeight) {
   return rows;
 }
 
-/** The dashboard's height for its rows: title + rows + footer. */
-export const dashHeight = rowCount => 40 + rowCount * 58 + 30;
+/** The dashboard's height for its rows: 80 for title + footer, 60 per row (with slack so nothing clips). */
+export const dashHeight = rowCount => 80 + rowCount * 60;
 
 const MARGIN = 14, GAP = 6, EDGE = 8;
 

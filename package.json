@@ -2,7 +2,7 @@
   "name": "herdr-ui",
   "private": true,
   "type": "module",
-  "description": "Herdr mods: editable Files panel, drag paths into terminals, GitHub issues/PR panel, MCP and skills panel, Claude sessions panel",
+  "description": "Herdr mods: editable Files panel, drag paths into terminals, GitHub issues/PR panel, MCP and skills panel, Claude sessions panel, system monitor in the status bar",
   "scripts": {
     "test": "node --test tests/my-files-logic.test.mjs tests/my-github-logic.test.mjs tests/my-files-open-logic.test.mjs tests/my-plugins-logic.test.mjs tests/my-sessions-logic.test.mjs tests/my-status-logic.test.mjs"
   },

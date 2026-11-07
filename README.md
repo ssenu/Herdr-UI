@@ -1,7 +1,7 @@
 # Herdr-UI
 
 [Herdr](https://github.com/herdrdev/herdr) 데스크톱 앱을 더 편하게 쓰기 위한 mod 모음입니다.
-오른쪽 패널의 Files를 편집 가능한 패널로 바꾸고, GitHub 이슈·PR 패널, MCP·스킬 목록 패널, Claude 세션 목록 패널을 추가합니다.
+오른쪽 패널의 Files를 편집 가능한 패널로 바꾸고, GitHub 이슈·PR 패널, MCP·스킬 목록 패널, Claude 세션 목록 패널, 하단 바 시스템 모니터를 추가합니다.
 
 | mod | 하는 일 |
 |---|---|
@@ -115,7 +115,7 @@ cd Herdr-UI
 .\install.cmd -ModsOnly         # mod만 복사하고 레이아웃은 건드리지 않음
 ```
 
-`-ModsOnly` 는 mod 파일만 갱신합니다. (새 패널 칸은 추가되지 않으므로, 새 버튼이 생긴 업데이트에서는 옵션 없이 실행하세요.)
+`-ModsOnly` 는 mod 파일만 갱신합니다. (새 패널 칸은 추가되지 않고 하단 바도 `my-status`로 바뀌지 않으므로, 새 버튼이 생긴 업데이트에서는 옵션 없이 실행하세요.)
 
 Herdr 기본 레이아웃(`main`, `terminals`, `win98`)은 직접 고칠 수 없어서 대상으로 줄 수 없습니다.
 mod와 레이아웃은 저장하면 바로 적용되므로 앱을 다시 켤 필요가 없습니다.

@@ -27,6 +27,7 @@ export default class MyStatus extends View {
       if (read) this.metrics = read;
       this.fails = failStep(this.fails, Boolean(read));
       this.history = pushHistory(this.history, this.fails.hidden ? null : this.metrics);
+      if (this.fails.hidden && this.hovered) { this.hovered = false; this.ripe = false; this.hoverSeq++; this.closeDash(); }
       if (this.dash) setShared(DASH_KEY, this.rows());
       this.reading = false;
       cx.notify();
@@ -66,7 +67,7 @@ export default class MyStatus extends View {
   }
 
   // A reload must not leave the dashboard behind.
-  async close() { this.closeDash(); }
+  async close() { this.hovered = false; this.hoverSeq++; this.closeDash(); }
 
   // The palette key as actually bound, not a hardcoded one; without a
   // binding the hint stays useful ("commands") instead of lying.

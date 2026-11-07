@@ -118,7 +118,7 @@ test("metricsCommand runs (powershell)", { skip: process.platform !== "win32" },
   assert.equal(r.status, 0, r.stderr);
   const m = L.parseMetrics(r.stdout);
   assert.ok(m, r.stdout);
-  assert.ok(m.cpu >= 0 && m.cpu <= 100);
+  assert.ok(typeof m.cpu === "number" && m.cpu >= 0 && m.cpu <= 100);
   assert.ok(m.ramTotal > 0 && m.ramUsed > 0 && m.ramUsed <= m.ramTotal);
   assert.ok(m.gpu === null || (m.gpu >= 0 && m.gpu <= 100));
 });

@@ -25,7 +25,7 @@
 - 스크립트: `Win32_PerfFormattedData_PerfOS_Processor`(`_Total`), `Win32_OperatingSystem`, `Win32_PerfFormattedData_GPUPerformanceCounters_GPUEngine`. 항목마다 따로 `try`로 묶어, 하나가 실패해도 나머지는 나온다.
 - 출력 한 줄: `METRICS<TAB>cpu<TAB>ramUsedKb<TAB>ramTotalKb<TAB>gpu`. 못 읽은 값은 빈 칸.
 - GPU 값: 엔진 종류별 `UtilizationPercentage` 합계 중 최댓값, 100 초과는 100.
-- 실패: 명령 실패이거나 CPU·RAM을 모두 못 읽으면 실패로 센다. 3번 연속 실패까지는 이전 값 유지, 그 뒤 수치를 숨기고 기록에도 빈 칸을 넣는다. 성공하면 다시 표시.
+- 실패: 명령 실패이거나 CPU·RAM을 모두 못 읽으면 실패로 센다. 연속 실패 2번까지는 이전 값 유지, 3번째부터 수치를 숨기고 기록에 빈 칸을 넣는다. 성공하면 다시 표시.
 - 비용(이 PC 측정): 한 번에 CPU 시간 약 0.33초, 5초 간격이면 16스레드 전체의 약 0.4%. `WmiPrvSE` 부담은 측정에 포함되지 않았다.
 
 ## 대시보드

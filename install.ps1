@@ -74,6 +74,7 @@ Copy-Item $file "$file.bak-$stamp" -Force
 $filesBlock.content.mod = "my-files"
 $tabsBlock.content.mod = "my-tabs"
 if ($statusBlock) { $statusBlock.content.mod = "my-status" }
+else { Write-Host "이 레이아웃에는 하단 바가 없어 시스템 모니터를 연결하지 않았어요." -ForegroundColor Yellow }
 if (-not (@($panelBody.children) | Where-Object { $_.id -eq "github" })) {
   $github = [pscustomobject]@{ id = "github"; type = "block"; content = [pscustomobject]@{ mod = "my-github" } }
   $panelBody.children = @($panelBody.children) + $github
