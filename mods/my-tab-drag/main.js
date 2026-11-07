@@ -3,10 +3,10 @@
 // the focused pane: a terminal keeps running (park, then keep), a viewer reopens there from its draft.
 import { View, div } from "gpui-kit";
 import { h_flex } from "gpui-base";
-import { props, closeOverlay, run, theme, notify, shared, spaces, panes, layout } from "herdr";
+import { props, closeOverlay, run, theme, notify, shared, spaces, panes, layout, focused } from "herdr";
 import { tabMove, workArea, dropZone, previewBox, placement, dropLabel } from "./logic.js";
 
-const WAIT_MS = 2000, POLL_MS = 100, DRAFT_MS = 300;
+const WAIT_MS = 2000, POLL_MS = 100, DRAFT_MS = 800; // the closed viewer writes its last draft in its final call, which the host caps at 250 ms
 
 function find(node, id) {
   if (node?.id === id) return node;
@@ -27,7 +27,7 @@ async function until(cx, test) {
 
 export default class MyTabDrag extends View {
   init(_props, cx) {
-    this.pos = null; this.size = null; this.done = false;
+    this.pos = null; this.size = null; this.done = false; this.moving = false;
     const space = spaces().find(s => s.active), tabId = props()?.tab?.id;
     this.move = tabMove(tabId, { activeTab: space?.tabs.find(t => t.active)?.id, panes: panes(), machine: space?.machine ?? null, own: shared("my-viewer.own") });
     this.handle = cx.focus_handle();
@@ -43,37 +43,47 @@ export default class MyTabDrag extends View {
     return this.move.blocked ? null : dropZone(this.pos, this.area());
   }
 
-  close() { const id = props()?.overlay; if (id) closeOverlay(id); }
+  dismiss() { try { const id = props()?.overlay; if (id) closeOverlay(id); } catch { /* nothing more to do */ } }
 
   finish(position, cx) {
     if (this.done) return;
     this.done = true;
     if (position) this.pos = position;
-    const zone = position ? this.zone() : null;
-    cx.notify(); // hides the label and preview at once
-    if (!zone) { this.close(); return; }
+    let zone = null;
+    try { zone = position ? this.zone() : null; } catch { this.dismiss(); return; }
+    if (zone) this.moving = true;
+    cx.notify(); // hides the preview at once; the label shows the move is running
+    if (!zone) { this.dismiss(); return; }
     cx.spawn(async cx => {
       try {
         if (this.move.kind === "terminal") await this.moveTerminal(zone, cx);
         else await this.moveViewer(zone, cx);
       } catch (e) {
         notify({ title: "탭을 옮기지 못했어요", body: String(e), level: "error", timeout: 5000 });
-      } finally { this.close(); }
+      } finally { this.dismiss(); }
     });
   }
 
   async moveTerminal(zone, cx) {
     const { terminal } = this.move, { place, swap } = placement(zone);
     const shown = () => panes().find(p => p.terminal === terminal);
+    if (!focused()?.pane) throw new Error("분할할 칸을 먼저 눌러 주세요");
     run("terminal.park", { terminal });
-    if (!await until(cx, () => !shown())) throw new Error("터미널을 탭에서 떼지 못했어요");
-    run("terminal.keep", { terminal, place });
-    if (!await until(cx, () => Boolean(shown()))) throw new Error("터미널이 새 칸에 나타나지 않았어요");
+    try {
+      if (!await until(cx, () => !shown())) throw new Error("터미널을 탭에서 떼지 못했어요");
+      run("terminal.keep", { terminal, place });
+      if (!await until(cx, () => Boolean(shown()))) throw new Error("터미널이 새 칸에 나타나지 않았어요");
+    } catch (e) {
+      // Parked but not placed: bring it back as a tab so the running terminal is not orphaned.
+      try { run("terminal.keep", { terminal, place: "tab" }); } catch { /* best effort */ }
+      throw e;
+    }
     if (swap) { run("pane.focus", { terminal }); run("pane.swap", { direction: swap }); }
   }
 
   async moveViewer(zone, cx) {
     const { path, on } = this.move, { place, swap } = placement(zone), tabId = props().tab.id;
+    if (!focused()?.pane) throw new Error("분할할 칸을 먼저 눌러 주세요");
     run("tab.close", { id: tabId, confirmed: true });
     if (!await until(cx, () => !panes().some(p => p.tab === tabId))) throw new Error("뷰어 탭을 닫지 못했어요");
     await cx.sleep(DRAFT_MS); // the closed viewer writes its last draft
@@ -96,10 +106,10 @@ export default class MyTabDrag extends View {
       .on_mouse_down("left", (_e, cx) => { cx.stop_propagation(); this.finish(null, cx); })
       .when(Boolean(box), el => el.child(div().absolute().left(box.x).top(box.y).w(box.width).h(box.height)
         .rounded(10).bg(t.accent).opacity(0.18).border_1().border_color(t.accent)))
-      .when(Boolean(this.pos) && !this.done, el => el.child(
+      .when(Boolean(this.pos) && (!this.done || this.moving), el => el.child(
         h_flex().absolute().left(this.pos.x + 14).top(this.pos.y + 12).h(26).px(10).gap(6).items_center()
           .rounded(7).bg(t.popover).border_1().border_color(this.move.blocked ? t.blocked : t.accent).text_color(t.foreground).text_size(12)
-          .child(tab?.name ?? "")
-          .child(div().text_color(t.dim).child(`· ${dropLabel(zone, this.move)}`))));
+          .child(this.moving ? "옮기는 중…" : tab?.name ?? "")
+          .when(!this.moving, l => l.child(div().text_color(t.dim).child(`· ${dropLabel(zone, this.move)}`)))));
   }
 }
