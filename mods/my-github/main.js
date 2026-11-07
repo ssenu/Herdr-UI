@@ -3,7 +3,7 @@
 import { View, div } from "gpui-kit";
 import { v_flex, h_flex, TextView } from "gpui-base";
 import { spaces, panes, focused, agents, exec, run, notify, theme, layout, openOverlay } from "herdr";
-import { listArgs, viewArgs, sortByUpdated, ciSummary, reviewLabel, stateLabel, relativeTime, agentPrompt, tabName, ghError, emptyText, dragText } from "./logic.js";
+import { listArgs, viewArgs, sortByUpdated, ciSummary, reviewLabel, stateLabel, relativeTime, agentPrompt, tabName, ghError, emptyText, dragText, canAct, actionArgs, confirmText, METHODS, methodLabel } from "./logic.js";
 
 import { followedCwd } from "./where.js";
 
@@ -36,12 +36,23 @@ async function gh(args, { cwd, on }) {
   catch { return { ok: false, error: ghError(r.stdout || "", false) }; }
 }
 
+// For gh commands that print no JSON (issue close, pr merge): success is the exit code.
+async function ghRun(args, { cwd, on }) {
+  let r;
+  try { r = await exec("gh", args, { cwd, on }); }
+  catch { return { ok: false, error: ghError("", true) }; }
+  return r.code === 0 ? { ok: true } : { ok: false, error: ghError(r.stderr || r.stdout || "", false) };
+}
+
+const itemKey = (kind, number) => `${kind}#${number}`;
+
 export default class GitHub extends View {
   init(_props, cx) {
     this.saved = new Map(); // location key -> { kind, filter }
     this.kind = "issue"; this.filter = "open";
     this.items = []; this.repo = null; this.error = null; this.loading = false; this.again = false;
     this.detail = null; // { kind, item, data, error }
+    this.act = null; // { key, kind, number, step: "pick" | "confirm" | "running" | "failed", method, error }
     this.carry = null; this.wasShown = false;
     if (this.visible()) this.refresh(cx);
     cx.timer.every(REFRESH_MS, cx => { if (this.visible()) this.refresh(cx); });
@@ -102,8 +113,9 @@ export default class GitHub extends View {
     this.filter = filter; this.items = []; this.error = null; this.refresh(cx);
   }
 
-  openDetail(item, cx) {
-    const context = this.context, detail = { kind: this.kind, item, data: null, error: null };
+  openDetail(item, cx, kind = this.kind) {
+    if (this.act?.step !== "running") this.act = null; // a half-made choice doesn't follow to another item
+    const context = this.context, detail = { kind, item, data: null, error: null };
     this.detail = detail;
     cx.spawn(async cx => {
       const r = await gh(viewArgs(detail.kind, item.number), context);
@@ -129,6 +141,48 @@ export default class GitHub extends View {
     if (agent) return { name: agent.program?.name || "에이전트" };
     const pane = f.pane ? panes().find(p => p.pane === f.pane) : null;
     return pane?.program?.agent ? { name: pane.program.name || "에이전트" } : null;
+  }
+
+  // Runs the confirmed close or merge. On success the item is read again (its buttons go away) and the list refreshes.
+  runAction(cx) {
+    const act = this.act, context = this.context;
+    if (!act || act.step === "running") return;
+    act.step = "running"; act.error = null;
+    cx.spawn(async cx => {
+      let r;
+      try { r = await ghRun(actionArgs(act.kind, act.number, act.method), context); }
+      catch (e) { r = { ok: false, error: { kind: "other", message: String(e) } }; }
+      if (r.ok) {
+        if (this.act === act) this.act = null;
+        if (this.context === context) {
+          this.refresh(cx);
+          const d = this.detail;
+          if (d && itemKey(d.kind, (d.data ?? d.item).number) === act.key) this.openDetail(d.item, cx, d.kind);
+        }
+      } else if (this.act === act) {
+        act.step = "failed"; act.error = r.error;
+      } else {
+        notify({ title: act.kind === "pr" ? `PR #${act.number}을 머지하지 못했어요` : `이슈 #${act.number}를 닫지 못했어요`, body: r.error.message, level: "error", timeout: 5000 });
+      }
+      cx.notify();
+    });
+  }
+
+  // The close / merge row under the detail toolbar, or null when the item can't be acted on.
+  actionRow(t, button) {
+    const d = this.detail, data = d.data;
+    if (!canAct(d.kind, data)) return null;
+    const pr = d.kind === "pr", key = itemKey(d.kind, data.number), act = this.act?.key === key ? this.act : null;
+    const start = method => ({ key, kind: d.kind, number: data.number, step: method || !pr ? "confirm" : "pick", method: method ?? null, error: null });
+    const row = h_flex().min_h(38).flex_none().px(14).py(6).gap(8).items_center().flex_wrap().border_b(1).border_color(t.border).text_size(12);
+    const cancel = button("gh-act-cancel", "취소", () => { this.act = null; });
+    if (!act) return row.child(button("gh-act-start", pr ? "머지" : "이슈 닫기", () => { this.act = start(null); }));
+    if (act.step === "pick") return row.children(METHODS.map(m => button(`gh-merge-${m}`, methodLabel(m), () => { this.act = start(m); }))).child(cancel);
+    if (act.step === "confirm") return row.child(div().child(confirmText(d.kind, data.number, act.method)))
+      .child(button("gh-act-go", pr ? "머지" : "닫기", cx => this.runAction(cx))).child(cancel);
+    if (act.step === "running") return row.child(div().text_color(t.dim).child(pr ? "머지 중…" : "닫는 중…"));
+    return row.child(div().text_color(t.ansi1).child(`⚠ ${act.error?.message ?? "gh 오류"}`))
+      .child(button("gh-act-retry", "다시 시도", cx => this.runAction(cx))).child(cancel);
   }
 
   handOff(cx) {
@@ -196,11 +250,12 @@ export default class GitHub extends View {
     return [
       h_flex().h(42).flex_none().px(14).gap(8).items_center().border_b(1).border_color(t.border)
         .child(div().id("github-back").w(20).cursor_pointer().text_color(t.muted)
-          .on_click((_e, cx) => { this.detail = null; cx.notify(); }).child("←"))
+          .on_click((_e, cx) => { this.detail = null; if (this.act?.step !== "running") this.act = null; cx.notify(); }).child("←"))
         .child(div().flex_1().min_w(0).truncate().font_semibold().child(`#${item.number} ${item.title}`)),
       h_flex().h(38).flex_none().px(14).gap(8).items_center().border_b(1).border_color(t.border)
         .child(button("github-open", "브라우저로 열기", cx => cx.open_url(item.url)))
         .child(button("github-agent", target ? `→ ${target.name} 입력창에 넣기` : "새 탭에서 Claude 시작", cx => this.handOff(cx))),
+      ...(d.data ? [this.actionRow(t, button)].filter(Boolean) : []),
       d.error ? content.child(div().text_color(t.dim).child(d.error.message))
       : !data ? content.child(div().text_color(t.dim).child("불러오는 중…"))
       : content
