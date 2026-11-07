@@ -78,7 +78,7 @@ export default class Tabs extends View {
       throw e;
     }
     const tab = shown().tab;
-    run("tab.rename", { id: tab, name: chip.name });
+    try { run("tab.rename", { id: tab, name: chip.name }); } catch { /* moved; only the name is off */ }
     return tab;
   }
 
@@ -128,18 +128,19 @@ export default class Tabs extends View {
     const button = (id, label, action) => div().id(id).size(26).flex_none().flex().items_center().justify_center().rounded(6).text_color(t.dim).hover(s => s.bg(t.hover).text_color(t.foreground))
       .on_mouse_down("left", stop).on_click(action).child(label);
     const split = shared(SPLIT_KEY), all = panes();
-    const chipEl = chip => {
+    const chipEl = (chip, active) => {
+      const on = active && chip.focused; // a tab that is not showing keeps its last focused pane
       const icon = (id, file, close) => div().id(`${id}-${chip.pane}`).flex_none().text_color(t.dim).hover(s => s.text_color(t.foreground)).on_mouse_down("left", stop)
         .on_click((_e, cx) => { cx.stop_propagation(); this.chipAction(chip, close, space.id, cx); }).child(svg(file).size(12));
       return h_flex().id(`chip-${chip.pane}`).h(29).px(8).gap(6).rounded(7).items_center().flex_none().text_size(12.8)
-        .border(1).border_color(chip.focused ? t.border : t.chrome).bg(chip.focused ? t.raised : t.chrome).text_color(chip.focused ? t.foreground : t.muted)
+        .border(1).border_color(on ? t.border : t.chrome).bg(on ? t.raised : t.chrome).text_color(on ? t.foreground : t.muted)
         .hover(s => s.bg(t.hover)).on_mouse_down("left", stop)
         .on_click(() => run("pane.focus", { pane: chip.pane }))
         .child(svg("mods/my-tabs/split.svg").size(12).flex_none().text_color(t.dim))
         .child(div().max_w(170).truncate().child(chip.name))
         .when(chip.status === "working", el => el.child(svg("mods/workspace-chrome/spinner.svg").size(12).flex_none().text_color(t.working).spin(900)))
         .when(chip.status === "blocked" || chip.status === "done", el => el.child(div().size(6).rounded(3).bg(t[chip.status])))
-        .when(chip.focused, el => el.child(icon("chip-out", "mods/my-tabs/detach.svg", false)).child(icon("chip-close", "mods/pane/close.svg", true)));
+        .when(on, el => el.child(icon("chip-out", "mods/my-tabs/detach.svg", false)).child(icon("chip-close", "mods/pane/close.svg", true)));
     };
     const item = (c, i) => {
       const chips = chipsFor(c.id, all, split), own = chips.length ? hostPanes(c.id, all, chips) : all.filter(p => p.tab === c.id);
@@ -166,7 +167,7 @@ export default class Tabs extends View {
         .when(status === "working", el => el.child(svg("mods/workspace-chrome/spinner.svg").size(12).flex_none().text_color(t.working).spin(900)))
         .when(status === "blocked" || status === "done", el => el.child(div().size(6).rounded(3).bg(t[status])))
         .when(c.active, el => el.child(div().id(`close-${c.id}`).text_color(t.dim).on_mouse_down("left", stop).on_click((_e, cx) => { cx.stop_propagation(); run("tab.close", { id: c.id }); }).child(svg("mods/pane/close.svg").size(12))));
-      return [tab, ...chips.map(chipEl)];
+      return [tab, ...chips.map(chip => chipEl(chip, c.active))];
     };
     const root = layout(), sidebar = find(root, "sidebar"), w = window();
     // Old saved rails and a dragged-narrow sidebar can be smaller than the window buttons.
