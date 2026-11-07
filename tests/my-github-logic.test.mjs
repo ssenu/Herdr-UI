@@ -12,7 +12,7 @@ test("listArgs builds gh list arguments per filter", () => {
 test("FIELDS and viewArgs", () => {
   assert.equal(L.FIELDS.issue, "number,title,author,labels,updatedAt,comments,url,state");
   assert.equal(L.FIELDS.pr, "number,title,author,labels,updatedAt,comments,url,state,isDraft,reviewDecision,statusCheckRollup");
-  assert.deepEqual(L.viewArgs("pr", 77), ["pr", "view", "77", "--json", "number,title,body,author,labels,state,comments,url,createdAt"]);
+  assert.deepEqual(L.viewArgs("pr", 77), ["pr", "view", "77", "--json", "number,title,body,author,labels,state,comments,url,createdAt,isDraft"]);
 });
 
 test("sortByUpdated: newest first, input untouched", () => {
@@ -91,4 +91,36 @@ test("emptyText", () => {
 test("dragText: one line, trailing space", () => {
   assert.equal(L.dragText("issue", { number: 78, title: "WS 테스트", url: "https://github.com/o/r/issues/78" }), '이슈 #78 "WS 테스트" https://github.com/o/r/issues/78 ');
   assert.equal(L.dragText("pr", { number: 77, title: "API", url: "https://github.com/o/r/pull/77" }), 'PR #77 "API" https://github.com/o/r/pull/77 ');
+});
+
+test("viewArgs: an issue has no isDraft field", () => {
+  assert.deepEqual(L.viewArgs("issue", 12), ["issue", "view", "12", "--json", "number,title,body,author,labels,state,comments,url,createdAt"]);
+});
+
+test("canAct: open issues and open, ready PRs only", () => {
+  assert.equal(L.canAct("issue", { state: "OPEN" }), true);
+  assert.equal(L.canAct("issue", { state: "CLOSED" }), false);
+  assert.equal(L.canAct("pr", { state: "OPEN", isDraft: false }), true);
+  assert.equal(L.canAct("pr", { state: "OPEN", isDraft: true }), false);
+  assert.equal(L.canAct("pr", { state: "MERGED", isDraft: false }), false);
+  assert.equal(L.canAct("pr", null), false);
+});
+
+test("actionArgs: close an issue, merge a PR by the chosen method", () => {
+  assert.deepEqual(L.actionArgs("issue", 12), ["issue", "close", "12"]);
+  assert.deepEqual(L.actionArgs("pr", 7, "merge"), ["pr", "merge", "7", "--merge"]);
+  assert.deepEqual(L.actionArgs("pr", 7, "squash"), ["pr", "merge", "7", "--squash"]);
+  assert.deepEqual(L.actionArgs("pr", 7, "rebase"), ["pr", "merge", "7", "--rebase"]);
+  assert.throws(() => L.actionArgs("pr", 7, "admin"));
+  assert.throws(() => L.actionArgs("pr", 7));
+});
+
+test("METHODS and methodLabel", () => {
+  assert.deepEqual(L.METHODS, ["merge", "squash", "rebase"]);
+  assert.deepEqual(L.METHODS.map(L.methodLabel), ["Merge", "Squash", "Rebase"]);
+});
+
+test("confirmText", () => {
+  assert.equal(L.confirmText("issue", 12), "이슈 #12를 닫을까요?");
+  assert.equal(L.confirmText("pr", 7, "squash"), "PR #7을 Squash로 머지할까요?");
 });

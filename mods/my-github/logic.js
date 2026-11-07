@@ -13,9 +13,29 @@ export function listArgs(kind, filter) {
   return args;
 }
 
-/** gh arguments for one issue or PR with its body and comments. */
+/** gh arguments for one issue or PR with its body and comments. A PR also says whether it is a draft. */
 export function viewArgs(kind, number) {
-  return [kind, "view", String(number), "--json", VIEW_FIELDS];
+  return [kind, "view", String(number), "--json", kind === "pr" ? `${VIEW_FIELDS},isDraft` : VIEW_FIELDS];
+}
+
+const METHOD = { merge: "Merge", squash: "Squash", rebase: "Rebase" };
+export const METHODS = Object.keys(METHOD);
+export const methodLabel = method => METHOD[method];
+
+/** Whether the detail view offers closing or merging: open, and for a PR not a draft. */
+export function canAct(kind, data) {
+  return data?.state === "OPEN" && !(kind === "pr" && data.isDraft);
+}
+
+/** gh arguments that close an issue or merge a PR. Never deletes the branch or bypasses rules. */
+export function actionArgs(kind, number, method) {
+  if (kind === "issue") return ["issue", "close", String(number)];
+  if (!METHOD[method]) throw new Error(`unknown merge method: ${method}`);
+  return ["pr", "merge", String(number), `--${method}`];
+}
+
+export function confirmText(kind, number, method) {
+  return kind === "issue" ? `이슈 #${number}를 닫을까요?` : `PR #${number}을 ${METHOD[method]}로 머지할까요?`;
 }
 
 /** Most recently updated first (ISO timestamps compare as strings). */
