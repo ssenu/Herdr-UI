@@ -11,8 +11,11 @@ export default class MyFilesDrag extends View {
   init() { this.pos = null; this.done = false; }
 
   action(position) {
-    const { panel, dir } = props() ?? {};
-    return dropAction({ position, panel, tabs: shared(BOUNDS_KEY), dir });
+    const { panel, dir, path } = props() ?? {}, bar = shared(BOUNDS_KEY);
+    // The bar runs to the window's right edge; its stored width can be stale after a resize.
+    const action = dropAction({ position, panel, tabs: bar ? { ...bar, width: Infinity } : null, dir });
+    // GitHub and Plugins rows use this layer too: they carry text to type, not a file to open.
+    return action === "open" && !path ? "paste" : action;
   }
 
   finish(position, cx) {
