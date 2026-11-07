@@ -13,8 +13,9 @@
 | `my-sessions` | 지금 저장소의 Claude Code 세션 목록. 누르면 새 탭에서 다시 열기 |
 | `my-new-menu` | 기본 `+` 메뉴의 복제본. "파일 뷰어" 항목 추가 |
 | `my-viewer` | 터미널처럼 탭으로 열리는 파일 뷰어·편집기 |
-| `my-status` | 기본 하단 바의 복제본. 이 PC의 CPU·RAM·GPU 표시 |
+| `my-status` | 기본 하단 바의 복제본. 이 PC의 CPU·RAM·GPU와 ccusage 사용량 표시 |
 | `my-status-dash` | 하단 바 수치에 마우스를 올리면 뜨는 최근 5분 그래프 |
+| `my-usage-dash` | 하단 바 사용량에 마우스를 올리면 뜨는 사용량 대시보드 |
 | `my-tab-drag` | 탭을 끌어 작업 화면의 가장자리에 놓으면 분할 |
 | `my-tabs` | 기본 탭 바의 복제본. Files · Changes 옆에 GitHub · Plugin · Session 버튼 추가 |
 
@@ -96,6 +97,14 @@
 - 원격 스페이스에서도 이 PC의 값이며, 앞에 `이 PC` 가 붙습니다.
 - 수치에 마우스를 올리면 CPU·RAM·GPU의 현재 값과 **최근 5분 막대그래프**가 뜹니다. 그래프는 앱을 켠 뒤부터 쌓입니다.
 
+### 사용량 요약 (`my-status`)
+
+- 하단 바의 시스템 수치 왼쪽에 `오늘 $104 · 블록 $33 · 2h15m 남음` 을 보여 줍니다. 활성 블록이 없으면 오늘 비용만 나옵니다. Windows에서만 표시합니다.
+- [ccusage](https://github.com/ryoppippi/ccusage)를 앱을 켤 때와 그 뒤 5분마다 실행해 읽습니다. Node.js(`npx`)가 필요합니다.
+- 마우스를 올리면 현재 블록의 진행 막대와 예상 비용, 최근 7일 막대그래프, 오늘 모델별 비용, 이번 달 합계가 뜹니다.
+- 금액은 API 가격으로 계산한 **추정치**이며 구독 요금과 다릅니다. 일별 값은 ccusage가 찾은 모든 CLI의 합이고, 블록은 Claude Code만 있습니다. 원격 스페이스에서도 **이 PC**의 기록입니다.
+- `ccusage@latest`로 실행하므로 실행할 때마다 npm을 확인하고 새 버전이 자동으로 실행됩니다. 출력 형식이 바뀌면 마지막 값이 그대로 남거나, 앱을 새로 켠 뒤에는 표시가 사라질 수 있습니다.
+
 ## 요구 사항
 
 - Herdr 앱 (0.1.13에서 확인). 설치 스크립트는 Windows(PowerShell)용입니다. 다른 OS는 [수동 설치](#수동-설치)를 보세요.
@@ -166,7 +175,7 @@ mod는 덮어씁니다. 레이아웃은 백업한 뒤 빠진 칸만 추가하므
 ## 제거
 
 1. 백업(`layouts\my-layout.json.bak-<시각>`)을 `my-layout.json` 으로 되돌리거나, 위 여섯 가지를 원래대로(`files`, `tabs`, `workspace-status`, github·plugins·sessions 칸 삭제) 고칩니다.
-2. `~\.config\herdr-app\mods\` 에서 `my-files`, `my-files-drag`, `my-files-open`, `my-github`, `my-new-menu`, `my-plugins`, `my-sessions`, `my-status`, `my-status-dash`, `my-tab-drag`, `my-tabs`, `my-viewer` 폴더를 지웁니다.
+2. `~\.config\herdr-app\mods\` 에서 `my-files`, `my-files-drag`, `my-files-open`, `my-github`, `my-new-menu`, `my-plugins`, `my-sessions`, `my-status`, `my-status-dash`, `my-tab-drag`, `my-tabs`, `my-usage-dash`, `my-viewer` 폴더를 지웁니다.
 3. 뷰어 초안까지 지우려면 `~\.config\herdr-app\data\my-viewer\` 를 지웁니다.
 
 ## 알려진 한계
