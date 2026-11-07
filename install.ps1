@@ -17,7 +17,7 @@ if (-not (Test-Path $app)) {
 }
 
 # 1. Mods
-$mods = @("my-files", "my-files-drag", "my-files-open", "my-github", "my-plugins", "my-sessions", "my-status", "my-tabs")
+$mods = @("my-files", "my-files-drag", "my-files-open", "my-github", "my-plugins", "my-sessions", "my-status", "my-status-dash", "my-tabs")
 New-Item -ItemType Directory -Force (Join-Path $app "mods") | Out-Null
 foreach ($m in $mods) {
   $to = Join-Path $app "mods\$m"
