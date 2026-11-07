@@ -16,7 +16,7 @@
 
 - 탭을 누른 채 포인터가 탭 바를 벗어나면 `my-tab-drag` 오버레이를 연다(`kind: "window"`, `frame: "none"`, 창 전체). `my-files`의 드래그와 같은 방식.
 - 탭 바 안에서 놓으면 지금처럼 순서를 바꾸거나 탭을 고른다.
-- 오버레이 props: `{ tab: { id, name }, move, bar, overlay }`. `move`는 `tabMove`의 결과.
+- 오버레이 props: `{ tab: { id, name } }`. 오버레이가 `tabMove`로 옮길 수 있는지 판단하고, 탭 바 위치는 공유 값 `my-tabs.bounds`에서 읽는다.
 
 ## 옮길 수 있는 탭 (`tabMove`)
 
@@ -59,14 +59,13 @@
 - `workArea({ bar, window, panelWidth, statusHeight })` → `{ x, y, width, height }`.
 - `dropZone(position, area)` → `"left" | "right" | "up" | "down" | null`.
 - `previewBox(zone, area)` → 표시할 절반 영역.
-- `placement(zone)` → `{ place, split, swap }`.
+- `placement(zone)` → `{ place, swap }`.
 - `dropLabel(zone, move)` → 이름표 글.
 
-`my-tabs`는 `tabMove`가 필요하므로 `logic.js`를 복사본으로 두고(`mods/my-tabs/tab-move.js`), 테스트로 내용이 같은지 확인한다.
 
 ## 테스트
 
-`tests/my-tab-drag-logic.test.mjs` (`npm test`에 추가): `tabMove` 표의 모든 줄, `workArea`(패널 있음·없음), `dropZone`(네 구역, 모서리, 가운데, 밖, 경계), `previewBox`, `placement`, `dropLabel`, 복사본 일치. 화면 동작은 사용자가 확인한다.
+`tests/my-tab-drag-logic.test.mjs` (`npm test`에 추가): `tabMove` 표의 모든 줄, `workArea`(패널 있음·없음), `dropZone`(네 구역, 모서리, 가운데, 밖, 경계), `previewBox`, `placement`, `dropLabel`. 화면 동작은 사용자가 확인한다.
 
 ## 문서
 
