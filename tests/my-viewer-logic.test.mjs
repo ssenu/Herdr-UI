@@ -135,6 +135,33 @@ test("baseName and parentDir handle both separators", () => {
   assert.equal(L.parentDir("b.txt"), "");
 });
 
+test("parentDir keeps the root of a file directly under it", () => {
+  assert.equal(L.parentDir("C:\\x.txt"), "C:\\");
+  assert.equal(L.parentDir("C:/x.txt"), "C:/");
+  assert.equal(L.parentDir("/x"), "/");
+});
+
+test("pickDraft: main, then backup; absent is not broken", () => {
+  const good = JSON.stringify({ path: "/a", text: "t", base: "h" });
+  const older = JSON.stringify({ path: "/a", text: "older", base: "h" });
+  assert.deepEqual(L.pickDraft(good, older), { draft: { path: "/a", text: "t", base: "h" }, broken: false });
+  assert.equal(L.pickDraft('{"path":"/a","te', older).draft.text, "older");
+  assert.equal(L.pickDraft('{"path":"/a","te', older).broken, false);
+  assert.deepEqual(L.pickDraft(null, null), { draft: null, broken: false });
+  assert.deepEqual(L.pickDraft(undefined, null), { draft: null, broken: true });
+  assert.deepEqual(L.pickDraft("{oops", "{oops"), { draft: null, broken: true });
+  assert.deepEqual(L.pickDraft(null, "{oops"), { draft: null, broken: true });
+});
+
+test("watchMatters: only changes to the file or its folder, or an unusable list", () => {
+  assert.equal(L.watchMatters(undefined, "C:\\A\\b.txt", "C:\\A"), true);
+  assert.equal(L.watchMatters("x", "C:\\A\\b.txt", "C:\\A"), true);
+  assert.equal(L.watchMatters(["c:/a/B.TXT"], "C:\\A\\b.txt", "C:\\A"), true);
+  assert.equal(L.watchMatters(["x", "C:/A"], "C:\\A\\b.txt", "C:\\A"), true);
+  assert.equal(L.watchMatters(["/p/other.txt", "/p/sub"], "/p/a.txt", "/p"), false);
+  assert.equal(L.watchMatters([], "/p/a.txt", "/p"), false);
+});
+
 test("findTab, tabInfo and keepLive", () => {
   assert.equal(L.findTab(spaces, "c"), "t3");
   assert.equal(L.findTab(spaces, "none"), null);

@@ -6,6 +6,14 @@ import { tabArgs, newToken } from "./viewer-open.js";
 // The last agents each machine reported, shown at once while knownAgents() checks again.
 const KNOWN = "new-menu.agents";
 
+// Where the viewer opens: the focused pane's folder and machine, as the Files panel works them out.
+function location() {
+  const space = spaces().find(s => s.active), f = focused();
+  const pane = f?.pane ? panes().find(p => p.pane === f.pane) : null;
+  const on = f?.pane === null ? (f.terminal?.includes("/") ? f.terminal.split("/")[0] : null) : space?.machine ?? null;
+  return { root: pane?.cwd || f?.cwd || space?.folder || null, on };
+}
+
 function shortcut(name) {
   const k = keys().find(b => b.section === "global" && b.action === name);
   if (!k?.keys.trim()) return "";
@@ -61,7 +69,7 @@ export default class NewMenu extends View {
         run("tab.new", { name: agent.name, space: space?.id, argv: agent.run });
       })
       .child(this.row("terminal", svg("icons/shell.svg").size(14), "Terminal", () => run("tab.new", { space: space?.id }), shortcut("tab.new")))
-      .child(this.row("file-viewer", svg("mods/my-files/file.svg").size(14), "파일 뷰어", () => run("tab.new", tabArgs({ path: null, on: space?.machine ?? null, root: focused()?.cwd ?? space?.folder ?? null, space: space?.id }, newToken(Date.now(), Math.random()))), "", Boolean(space)))
+      .child(this.row("file-viewer", svg("mods/my-files/file.svg").size(14), "파일 뷰어", () => { const { root, on } = location(); run("tab.new", tabArgs({ path: null, on, root, space: space?.id }, newToken(Date.now(), Math.random()))); }, "", Boolean(space)))
       .child(div().px(9).pt(8).pb(4).text_size(11).text_color(t.dim).child("Start an agent"))
       .child(v_flex().flex_1().min_h(0).overflow_y_scrollbar()
         .children(choices.map((a, i) => this.row(a.key, a.tint ? svg(a.icon).size(14).text_color(t.foreground) : image(a.icon).size(14), a.name,

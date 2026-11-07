@@ -49,7 +49,7 @@ export default class Tabs extends View {
   // a shared value re-renders every mod.
   measure() {
     if (!this.origin || !this.size) return;
-    const bounds = { x: this.origin.x, y: this.origin.y, width: this.size.width, height: this.size.height };
+    const bounds = { x: Math.round(this.origin.x), y: Math.round(this.origin.y), width: Math.round(this.size.width), height: Math.round(this.size.height) };
     if (JSON.stringify(bounds) === JSON.stringify(shared("my-tabs.bounds"))) return;
     setShared("my-tabs.bounds", bounds);
   }

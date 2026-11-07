@@ -4,16 +4,22 @@
 import { View, div, svg } from "gpui-kit";
 import { v_flex, h_flex, Editor, EditorState, TextView, InputState, Input } from "gpui-base";
 import { props, spaces, exec, readTextFile, writeTextFile, watchFolder, theme, settings, window, openOverlay, run, notify, shared, setShared, appHome } from "herdr";
-import { mkdir, writeFile, unlink } from "fs/promises";
+import { mkdir, writeFile, unlink, readFile, exists } from "fs/promises";
 import { editability, previewText, sameText, isSaveKey, restoreEol, syncDecision, saveFailure, REASONS, absolutePath, searchPaths, splitPath, segments, indexCommand, indexLines } from "./files-logic.js";
-import { viewKind, textHash, draftName, parseDraft, restoreState, dirtyName, baseName, parentDir, findTab, tabInfo, keepLive } from "./logic.js";
+import { viewKind, textHash, draftName, pickDraft, watchMatters, restoreState, dirtyName, baseName, parentDir, findTab, tabInfo, keepLive } from "./logic.js";
 import { OPEN_KEY, OWN_KEY, openKey, openCommands } from "./viewer-open.js";
 
 const LANG = { ts: "js", tsx: "js", mts: "js", cts: "js", jsx: "js", mjs: "js", toml: "yaml", jsonc: "json", svelte: "html", vue: "html" };
 const DRAFT_MS = 1000, CLAIM_MS = 500, CLAIM_TRIES = 60, RESULT_LIMIT = 200;
 const GONE = "이 파일을 찾을 수 없어요";
 const draftsDir = () => `${appHome()}/data/my-viewer/drafts`;
+// Two generations: the new one is written whole first, then the main one, so a cut-off write leaves one intact.
 const draftFile = path => `${draftsDir()}/${draftName(path)}.json`;
+const draftNewFile = path => `${draftsDir()}/${draftName(path)}.new.json`;
+// Text of the file, null when absent, undefined when it exists but can't be read.
+const readDraftFile = async file => {
+  try { return (await exists(file)) ? await readFile(file, "utf8") : null; } catch { return undefined; }
+};
 
 export default class Viewer extends View {
   init(_props, cx) {
@@ -56,15 +62,18 @@ export default class Viewer extends View {
 
   syncName(name) {
     if (!this.tab) return;
-    const current = tabInfo(spaces(), this.tab)?.name ?? "";
+    const info = tabInfo(spaces(), this.tab);
+    if (!info) return;
+    const current = info.name ?? "";
     const want = dirtyName(name ?? current, Boolean(this.buf?.dirty));
     if (want === current) return;
     try { run("tab.rename", { id: this.tab, name: want }); } catch {}
   }
 
   async readDraft() {
-    if (this.on) return null;
-    return parseDraft(await readTextFile(draftFile(this.path)).catch(() => null));
+    if (this.on) return { draft: null, broken: false };
+    const main = await readDraftFile(draftFile(this.path));
+    return pickDraft(main, await readDraftFile(draftNewFile(this.path)));
   }
 
   // Draft writes and deletes run one at a time, deciding from the state when their turn comes.
@@ -73,21 +82,31 @@ export default class Viewer extends View {
     return this.draftIO;
   }
 
+  // Removes both generations. A file that isn't there is fine.
+  async removeDraft(path) {
+    await unlink(draftNewFile(path)).catch(() => {});
+    await unlink(draftFile(path)).catch(() => {});
+  }
+
+  // An unreadable draft is left where it is for the person to recover: no writes or deletes for this tab.
   dropDraft(path = this.path) {
     return this.queueDraft(async () => {
-      try { await unlink(draftFile(path)); } catch {} // usually there is none
+      if (!this.draftBroken) await this.removeDraft(path);
     });
   }
 
   flushDraft() {
     return this.queueDraft(async () => {
       const buf = this.buf, path = this.path;
-      if (!buf?.editable) return;
+      if (!buf?.editable || this.draftBroken) return;
       try {
-        if (!buf.dirty) { await unlink(draftFile(path)).catch(() => {}); return; }
+        if (!buf.dirty) { await this.removeDraft(path); return; }
         await mkdir(draftsDir(), { recursive: true });
         const base = buf.conflict === "draft" ? buf.draftBase : textHash(buf.base ?? "");
-        await writeFile(draftFile(path), JSON.stringify({ path, text: buf.state.value(), base }));
+        const body = JSON.stringify({ path, text: buf.state.value(), base });
+        await writeFile(draftNewFile(path), body);
+        await writeFile(draftFile(path), body);
+        await unlink(draftNewFile(path)).catch(() => {});
       } catch (e) {
         if (!this.draftWarned) notify({ title: "초안을 보관하지 못했어요", body: String(e), level: "warning", timeout: 5000 });
         this.draftWarned = true;
@@ -102,8 +121,8 @@ export default class Viewer extends View {
 
   makeBuffer(path, text, base) {
     const t = theme(), ext = path.includes(".") ? path.split(".").pop().toLowerCase() : "txt";
-    const { editable, reason } = editability({ remote: Boolean(this.on), text: (base?.length ?? 0) > text.length ? base : text });
-    const state = EditorState.new({ language: LANG[ext] ?? ext, readonly: !editable, value: previewText(text),
+    const { editable, reason } = editability({ remote: Boolean(this.on), text: typeof base === "string" ? base : text });
+    const state = EditorState.new({ language: LANG[ext] ?? ext, readonly: !editable, value: editable ? text : previewText(text),
       font_family: settings().font_family, font_size: 13,
       syntax: { keyword: t.ansi5, string: t.ansi2, comment: t.dim, function: t.ansi4, type: t.ansi3, number: t.ansi1, constant: t.ansi6 } });
     const buf = { state, base, dirty: false, conflict: null, editable, reason, saving: false, view: viewKind(path, text) === "markdown" ? "preview" : "edit", rev: 0 };
@@ -125,8 +144,14 @@ export default class Viewer extends View {
         const disk = await readTextFile(path, { on: this.on });
         if (this.path !== path) return;
         if (viewKind(path, disk) === "binary") { this.binary = true; return; }
-        const draft = await this.readDraft();
-        if (disk === null && !draft) { this.error = GONE; return; }
+        const { draft, broken } = await this.readDraft();
+        if (this.path !== path) return;
+        this.draftBroken = broken;
+        if (broken && !this.brokenWarned) {
+          this.brokenWarned = true;
+          notify({ title: "저장 안 한 초안을 읽지 못했어요", body: draftFile(path), level: "warning", timeout: 8000 });
+        }
+        if (disk === null && !draft) { this.error = GONE; this.watch(cx); return; }
         const start = restoreState(draft, path, disk);
         if (start.discard) this.dropDraft(path);
         this.buf?.state.release();
@@ -149,30 +174,38 @@ export default class Viewer extends View {
     cx.spawn(async cx => {
       try {
         while (!this.closed && this.path === path) {
-          await watchFolder(dir);
-          await this.syncDisk();
-          cx.notify();
+          const changed = await watchFolder(dir);
+          if (this.closed || this.path !== path || !watchMatters(changed, path, dir)) continue;
+          let redraw = await this.syncDisk();
+          // The file came back after it was gone: load() starts over (watch() sees it is already running).
+          if (this.error === GONE && !this.buf && await readTextFile(path).catch(() => null) !== null && this.path === path) {
+            this.load(cx);
+            redraw = true;
+          }
+          if (redraw) cx.notify();
         }
       } catch { if (this.watching === path) this.watching = null; }
     });
   }
 
   // After a folder change: a clean buffer follows the disk, a dirty one that diverged becomes a conflict.
+  // Returns whether anything shown changed.
   async syncDisk() {
     const buf = this.buf;
-    if (!buf || buf.saving || buf.conflict === "draft") return;
+    if (!buf || buf.saving || buf.conflict === "draft") return false;
     const snap = buf.base;
     const disk = await readTextFile(this.path).catch(() => undefined);
-    if (disk === undefined || this.buf !== buf || buf.saving || buf.base !== snap || (disk !== null && disk.includes("\0"))) return;
+    if (disk === undefined || this.buf !== buf || buf.saving || buf.base !== snap || (disk !== null && disk.includes("\0"))) return false;
     switch (syncDecision({ base: buf.base, dirty: buf.dirty, value: buf.state.value() }, disk)) {
-      case "none": buf.conflict = null; break;
-      case "adopt": buf.base = disk; buf.dirty = false; buf.conflict = null; this.syncName(); this.dropDraft(); break;
-      case "reload": this.reload(disk); break;
-      case "conflict": buf.conflict = "disk"; break;
+      case "none": { const had = buf.conflict !== null; buf.conflict = null; return had; }
+      case "adopt": buf.base = disk; buf.dirty = false; buf.conflict = null; this.syncName(); this.dropDraft(); return true;
+      case "reload": this.reload(disk); return true;
+      case "conflict": { const had = buf.conflict === "disk"; buf.conflict = "disk"; return !had; }
       case "drop":
         buf.state.release(); this.buf = null; this.error = GONE;
-        break;
+        return true;
     }
+    return false;
   }
 
   // Takes the disk text into a buffer with no edits to keep (recreated if it changes editability).
@@ -378,15 +411,17 @@ export default class Viewer extends View {
           .child(chip("viewer-edit", "편집", buf.view === "edit", () => { buf.view = "edit"; }))))
       .when(Boolean(buf && !buf.editable), el => el.child(bar().text_color(t.dim)
         .child(div().flex_1().min_w(0).truncate().child(REASONS[buf.reason] ?? "읽기 전용"))
-        .child(button("viewer-nano", "nano로 열기", () => this.openInNano()))))
+        .child(this.on
+          ? button("viewer-nano", "nano로 열기", () => this.openInNano())
+          : button("viewer-external-ro", "외부 프로그램으로 열기", () => this.openExternal()))))
       .when(buf?.conflict === "disk", el => el.child(bar()
         .child(div().flex_1().min_w(0).truncate().text_color(t.blocked).child("디스크의 파일이 바뀌었어요"))
         .child(button("viewer-overwrite", "내 것으로 덮어쓰기", cx => this.overwrite(cx)))
         .child(button("viewer-load", "디스크 버전 불러오기", cx => this.loadDisk(cx)))))
       .when(buf?.conflict === "draft", el => el.child(bar()
-        .child(div().flex_1().min_w(0).truncate().text_color(t.blocked).child("디스크의 파일이 바뀌었어요 · 저장 안 한 초안이 있어요"))
+        .child(div().flex_1().min_w(0).truncate().text_color(t.blocked).child(buf.base === null ? "파일이 지워졌어요 · 저장 안 한 초안이 있어요" : "디스크의 파일이 바뀌었어요 · 저장 안 한 초안이 있어요"))
         .child(button("viewer-keep", "초안 유지", cx => this.keepDraft(cx)))
-        .child(button("viewer-load-draft", "디스크 버전 불러오기", cx => this.loadDisk(cx)))))
+        .child(button("viewer-load-draft", buf.base === null ? "초안 버리기" : "디스크 버전 불러오기", cx => this.loadDisk(cx)))))
       .child(this.binary
         ? message(`${baseName(path)} · 여기서 표시할 수 없는 파일이에요`)
           .when(!this.on, el => el.child(button("viewer-external", "외부 프로그램으로 열기", () => this.openExternal())))

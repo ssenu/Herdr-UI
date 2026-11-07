@@ -57,8 +57,30 @@ export function dirtyName(name, dirty) {
 export const baseName = path => String(path ?? "").split(/[\\/]/).pop();
 
 export function parentDir(path) {
-  const m = /^(.*)[\\/][^\\/]*$/.exec(String(path ?? ""));
-  return m ? m[1] : "";
+  const m = /^(.*)([\\/])[^\\/]*$/.exec(String(path ?? ""));
+  if (!m) return "";
+  // A file at the root keeps its root: "/x" gives "/", "C:\x" gives "C:\".
+  return m[1] === "" || /^[A-Za-z]:$/.test(m[1]) ? m[1] + m[2] : m[1];
+}
+
+/**
+ * Which draft file to use. main, backup: each file's text, null when absent, undefined when it couldn't be read.
+ * broken: something is there (or unreadable) but nothing usable, so it must be left alone.
+ */
+export function pickDraft(main, backup) {
+  const a = parseDraft(main);
+  if (a) return { draft: a, broken: false };
+  const b = parseDraft(backup);
+  if (b) return { draft: b, broken: false };
+  return main === null && backup === null ? { draft: null, broken: false } : { draft: null, broken: true };
+}
+
+/** Whether a watchFolder result can concern the file. A result that isn't a list means "refresh everything". */
+export function watchMatters(changed, file, dir) {
+  if (!Array.isArray(changed)) return true;
+  const trim = p => normKey(p).replace(/(?<=.)\/+$/, "");
+  const want = new Set([trim(file), trim(dir)]);
+  return changed.some(p => typeof p === "string" && want.has(trim(p)));
 }
 
 /** The id of the tab with this exact name. */
