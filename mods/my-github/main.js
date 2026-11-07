@@ -40,7 +40,11 @@ async function gh(args, { cwd, on }) {
 async function ghRun(args, { cwd, on }) {
   let r;
   try { r = await exec("gh", args, { cwd, on }); }
-  catch { return { ok: false, error: ghError("", true) }; }
+  catch (e) {
+    // A time limit may have cut gh off after GitHub already did it: say so instead of "no gh".
+    if (/time/i.test(String(e))) return { ok: false, error: { kind: "timeout", message: "응답이 늦어 결과를 모르겠어요. 상태를 확인해 주세요" } };
+    return { ok: false, error: ghError("", true) };
+  }
   return r.code === 0 ? { ok: true } : { ok: false, error: ghError(r.stderr || r.stdout || "", false) };
 }
 
@@ -145,24 +149,30 @@ export default class GitHub extends View {
 
   // Runs the confirmed close or merge. On success the item is read again (its buttons go away) and the list refreshes.
   runAction(cx) {
-    const act = this.act, context = this.context;
+    const act = this.act;
     if (!act || act.step === "running") return;
+    const context = act.context;
     act.step = "running"; act.error = null;
     cx.spawn(async cx => {
       let r;
       try { r = await ghRun(actionArgs(act.kind, act.number, act.method), context); }
-      catch (e) { r = { ok: false, error: { kind: "other", message: String(e) } }; }
+      catch { r = { ok: false, error: { kind: "other", message: "명령을 만들지 못했어요" } }; }
       if (r.ok) {
         if (this.act === act) this.act = null;
-        if (this.context === context) {
-          this.refresh(cx);
-          const d = this.detail;
-          if (d && itemKey(d.kind, (d.data ?? d.item).number) === act.key) this.openDetail(d.item, cx, d.kind);
-        }
       } else if (this.act === act) {
         act.step = "failed"; act.error = r.error;
       } else {
         notify({ title: act.kind === "pr" ? `PR #${act.number}을 머지하지 못했어요` : `이슈 #${act.number}를 닫지 못했어요`, body: r.error.message, level: "error", timeout: 5000 });
+      }
+      // Either way, read the item and the list again: even a failure may have gone through (a timeout),
+      // and an item that is no longer open loses its buttons.
+      if (this.context === context) {
+        this.refresh(cx);
+        const d = this.detail;
+        if (d && itemKey(d.kind, (d.data ?? d.item).number) === act.key) {
+          const fresh = await gh(viewArgs(d.kind, act.number), context);
+          if (this.detail === d && fresh.ok) d.data = fresh.data;
+        }
       }
       cx.notify();
     });
@@ -172,10 +182,13 @@ export default class GitHub extends View {
   actionRow(t, button) {
     const d = this.detail, data = d.data;
     if (!canAct(d.kind, data)) return null;
-    const pr = d.kind === "pr", key = itemKey(d.kind, data.number), act = this.act?.key === key ? this.act : null;
-    const start = method => ({ key, kind: d.kind, number: data.number, step: method || !pr ? "confirm" : "pick", method: method ?? null, error: null });
+    const pr = d.kind === "pr", key = itemKey(d.kind, data.number), context = this.context;
+    const act = this.act?.key === key && this.act.context === context ? this.act : null; // same number in another repo is another item
+    const start = method => ({ key, context, kind: d.kind, number: data.number, step: method || !pr ? "confirm" : "pick", method: method ?? null, error: null });
     const row = h_flex().min_h(38).flex_none().px(14).py(6).gap(8).items_center().flex_wrap().border_b(1).border_color(t.border).text_size(12);
     const cancel = button("gh-act-cancel", "취소", () => { this.act = null; });
+    // One at a time: starting here while another runs would forget that one, and could run it twice.
+    if (!act && this.act?.step === "running") return row.child(div().text_color(t.dim).child(`#${this.act.number} 처리가 끝나면 할 수 있어요`));
     if (!act) return row.child(button("gh-act-start", pr ? "머지" : "이슈 닫기", () => { this.act = start(null); }));
     if (act.step === "pick") return row.children(METHODS.map(m => button(`gh-merge-${m}`, methodLabel(m), () => { this.act = start(m); }))).child(cancel);
     if (act.step === "confirm") return row.child(div().child(confirmText(d.kind, data.number, act.method)))
