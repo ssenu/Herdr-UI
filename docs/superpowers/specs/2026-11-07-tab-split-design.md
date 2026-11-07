@@ -2,7 +2,7 @@
 
 - 날짜: 2026-11-07
 - 대상: 새 mod `mods/my-tab-drag`, `mods/my-tabs`, `mods/my-viewer`, `install.ps1`, `README.md`, `package.json`, `tests/`
-- 범위: 한 칸짜리 터미널·에이전트 탭과 파일을 연 뷰어 탭을, 지금 보고 있는 탭의 네 방향으로 옮긴다. 여러 칸 탭, 원격 탭, 분할을 다시 탭으로 빼기, 크기 조절은 하지 않는다.
+- 범위: 한 칸짜리 터미널·에이전트 탭과 파일을 연 뷰어 탭을, 지금 보고 있는 탭의 네 방향으로 옮기고, 옮긴 칸을 탭 바에 칩으로 남긴다. 여러 칸 탭, 원격 탭, 크기 조절은 하지 않는다.
 
 ## 확인한 동작
 
@@ -74,4 +74,31 @@ README: mod 표, 기능 절(`탭을 끌어 분할하기`), 설치 mod 수, 제�
 - 한 칸짜리 터미널·에이전트 탭과 파일을 연 뷰어 탭만 옮긴다. 원격 탭은 옮기지 않는다.
 - 이미 나뉜 화면에서는 포커스된 칸이 나뉜다.
 - 분할 칸의 뷰어는 탭 이름에 `●`가 없고, 이미 열린 파일로 이동하지 않는다.
-- 분할을 다시 탭으로 빼는 기능은 없다.
+
+## 탭 바의 칩
+
+같은 터미널을 탭과 분할 칸에 동시에 띄울 수는 없다. `terminal.show`로 시험하면 분할 칸에 나타나지 않고 그 터미널의 탭으로 화면이 넘어갔다. 그래서 옮긴 칸을 탭 바에 칩으로 남긴다.
+
+임시 스페이스에서 확인한 동작:
+
+- 칸 ID는 `pane.swap`을 거쳐도 그대로다. `terminal.keep`은 새 칸 ID를 만든다.
+- `terminal.keep { place: "tab" }`: 같은 프로세스로 새 탭이 끝에 생기고 그 탭이 활성이 된다. 탭 이름은 터미널 주소가 되므로 `tab.rename`으로 고친다.
+- `pane.focus { pane }`: 다른 탭의 칸이어도 그 탭으로 넘어간다.
+- `pane.close { pane }`: 실행 중인 프로세스도 확인 없이 닫는다.
+
+기록: `my-tab-drag`가 옮기기에 성공하면 공유 값 `my-tabs.split`에 칸 ID로 `{ name, kind, path?, on? }`을 적는다. 쓸 때 사라진 칸은 지운다. 이름 앞의 `● `는 뺀다.
+
+표시 (`my-tabs`):
+
+- 탭 바에서 칩은 그 칸이 있는 탭 바로 뒤에 놓인다. 원래 탭 자리로 돌아가지는 않는다.
+- 탭에 기록된 칸만 있으면 첫 칸은 탭 자신으로 치고 칩을 만들지 않는다. 칸이 혼자 남으면 칩이 사라진다.
+- 탭의 이름, 아이콘, 상태는 칩이 아닌 칸에서 정한다. 칩은 자기 칸의 상태를 보여 준다.
+- 칩을 누르면 `pane.focus`. 포커스된 칩이 강조되고, 그때 탭은 강조하지 않는다.
+- 포커스된 칩에 버튼 둘:
+  - 탭으로 빼기. 터미널: `terminal.park` → `terminal.keep { place: "tab" }` → 이름 복원. 뷰어: `pane.close` → 초안 대기 → `tabArgs`로 탭 열기.
+  - 닫기(`×`). 터미널: 탭으로 뺀 뒤 `tab.close`를 `confirmed` 없이 부른다(일반 탭 닫기와 같은 경로). 뷰어: `pane.close`, 초안은 남는다.
+- 칩은 끌 수 없고 우클릭 메뉴가 없다. 탭의 `×`는 지금처럼 탭 전체를 닫는다.
+
+함수 (`mods/my-tabs/logic.js`, 순수): `chipsFor(tabId, panes, split)`, `hostPanes(tabId, panes, chips)`, `hostStatus(panes)`, `dropSplit(split, panes, pane)`. `mods/my-tab-drag/logic.js`: `addSplit(split, panes, pane, entry)`, `plainName(name)`.
+
+탭을 다시 여는 인자는 `viewer-open.js`의 `tabArgs`, `newToken`을 쓴다(`my-tabs`에 복사하고 테스트로 같은지 확인).
