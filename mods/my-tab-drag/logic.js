@@ -1,10 +1,12 @@
 // Pure helpers for my-tab-drag. No herdr or gpui imports, so `node --test` can load this file.
 
+const CHILDREN = "하위 에이전트가 있는 탭은 옮길 수 없어요";
 const ACTIVE = "지금 보고 있는 탭은 옮길 수 없어요", MANY = "여러 칸으로 나뉜 탭은 옮길 수 없어요", REMOTE = "원격 탭은 옮길 수 없어요", OTHER = "이 탭은 옮길 수 없어요";
 const GAP = 8, EDGE = 0.25;
 
-/** What dragging this tab can do. own: the shared my-viewer.own map (token → { tab, path, on }). */
-export function tabMove(tabId, { activeTab, panes, machine, own }) {
+/** What dragging this tab can do. own: the shared my-viewer.own map (token → { tab, path, on }).
+ *  parents: the `parent` of every terminal that has one; a terminal listed there has sub-agents. */
+export function tabMove(tabId, { activeTab, panes, machine, own, parents = [] }) {
   if (tabId === activeTab) return { blocked: ACTIVE };
   if (machine) return { blocked: REMOTE };
   const list = panes.filter(p => p.tab === tabId);
@@ -17,6 +19,7 @@ export function tabMove(tabId, { activeTab, panes, machine, own }) {
   }
   if (pane.mod || !pane.terminal) return { blocked: OTHER };
   if (pane.terminal.includes("/")) return { blocked: REMOTE };
+  if (parents.includes(pane.terminal)) return { blocked: CHILDREN };
   return { kind: "terminal", terminal: pane.terminal };
 }
 

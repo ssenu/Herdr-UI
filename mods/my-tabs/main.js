@@ -74,7 +74,11 @@ export default class Tabs extends View {
       return h_flex().id(`tab-${c.id}`).h(29).px(10).gap(7).rounded(7).items_center().flex_none().text_size(12.8)
         .border(1).border_color(c.active ? t.border : t.chrome).bg(c.active ? t.raised : t.chrome).text_color(c.active ? t.foreground : t.muted)
         .hover(s => s.bg(t.hover))
-        .on_mouse_down("left", (e, cx) => { cx.stop_propagation(); this.pressed = i; this.pressedTab = { id: c.id, name }; if (e.click_count === 2) run("tab.rename", { id: c.id }); })
+        .on_mouse_down("left", (e, cx) => {
+          cx.stop_propagation();
+          if (e.click_count === 2) { this.pressed = null; this.pressedTab = null; run("tab.rename", { id: c.id }); }
+          else { this.pressed = i; this.pressedTab = { id: c.id, name }; }
+        })
         .on_mouse_up("left", () => {
           const from = this.pressed; this.pressed = null; this.pressedTab = null;
           if (from !== null && from !== i) run("tab.move", { id: shown[from].id, index: space.tabs.findIndex(x => x.id === c.id) + 1 });

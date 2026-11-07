@@ -27,7 +27,7 @@ export default class Viewer extends View {
     this.token = p.token ?? null; this.tabName = p.tabName ?? null; this.on = p.on ?? null; this.root = p.root ?? null;
     const own = this.token ? shared(OWN_KEY)?.[this.token] : null;
     this.path = p.path ?? own?.path ?? null; this.tab = own?.tab ?? null;
-    this.buf = null; this.error = null; this.binary = false; this.draftSeq = 0; this.closed = false; this.watching = null;
+    this.buf = null; this.error = null; this.binary = false; this.draftSeq = 0; this.draftHeld = false; this.closed = false; this.watching = null;
     this.query = ""; this.at = 0; this.index = null; this.found = null;
     this.search = InputState.new({ placeholder: "이 폴더에서 파일 찾기" });
     this.search.on("change", (_e, cx) => { this.query = this.search.value(); this.at = 0; this.ensureIndex(cx); cx.notify(); });
@@ -91,7 +91,9 @@ export default class Viewer extends View {
   // An unreadable draft is left where it is for the person to recover: no writes or deletes for this tab.
   dropDraft(path = this.path) {
     return this.queueDraft(async () => {
-      if (!this.draftBroken) await this.removeDraft(path);
+      if (this.draftBroken) return;
+      await this.removeDraft(path);
+      this.draftHeld = false;
     });
   }
 
@@ -100,13 +102,18 @@ export default class Viewer extends View {
       const buf = this.buf, path = this.path;
       if (!buf?.editable || this.draftBroken) return;
       try {
-        if (!buf.dirty) { await this.removeDraft(path); return; }
+        // A clean buffer removes only a draft this viewer holds: another viewer of the file may own the one on disk.
+        if (!buf.dirty) {
+          if (this.draftHeld) { await this.removeDraft(path); this.draftHeld = false; }
+          return;
+        }
         await mkdir(draftsDir(), { recursive: true });
         const base = buf.conflict === "draft" ? buf.draftBase : textHash(buf.base ?? "");
         const body = JSON.stringify({ path, text: buf.state.value(), base });
         await writeFile(draftNewFile(path), body);
         await writeFile(draftFile(path), body);
         await unlink(draftNewFile(path)).catch(() => {});
+        this.draftHeld = true;
       } catch (e) {
         if (!this.draftWarned) notify({ title: "초안을 보관하지 못했어요", body: String(e), level: "warning", timeout: 5000 });
         this.draftWarned = true;
@@ -157,6 +164,7 @@ export default class Viewer extends View {
         this.buf?.state.release();
         const buf = this.makeBuffer(path, start.text, disk);
         buf.dirty = start.dirty;
+        if (start.dirty) this.draftHeld = true; // the draft on disk is this viewer's to remove
         buf.conflict = start.conflict ? "draft" : null;
         if (start.conflict) buf.draftBase = draft.base;
         this.buf = buf;

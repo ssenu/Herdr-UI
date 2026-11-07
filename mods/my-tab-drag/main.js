@@ -3,7 +3,7 @@
 // the focused pane: a terminal keeps running (park, then keep), a viewer reopens there from its draft.
 import { View, div } from "gpui-kit";
 import { h_flex } from "gpui-base";
-import { props, closeOverlay, run, theme, notify, shared, spaces, panes, layout, focused } from "herdr";
+import { props, closeOverlay, run, theme, notify, shared, spaces, panes, layout, focused, terminals } from "herdr";
 import { tabMove, workArea, dropZone, previewBox, placement, dropLabel } from "./logic.js";
 
 const WAIT_MS = 2000, POLL_MS = 100, DRAFT_MS = 800; // the closed viewer writes its last draft in its final call, which the host caps at 250 ms
@@ -29,21 +29,29 @@ export default class MyTabDrag extends View {
   init(_props, cx) {
     this.pos = null; this.size = null; this.done = false; this.moving = false;
     const space = spaces().find(s => s.active), tabId = props()?.tab?.id;
-    this.move = tabMove(tabId, { activeTab: space?.tabs.find(t => t.active)?.id, panes: panes(), machine: space?.machine ?? null, own: shared("my-viewer.own") });
+    this.move = tabMove(tabId, { activeTab: space?.tabs.find(t => t.active)?.id, panes: panes(), machine: space?.machine ?? null, own: shared("my-viewer.own"), parents: terminals().map(t => t.parent).filter(Boolean) });
     this.handle = cx.focus_handle();
     this.handle.focus();
   }
 
   area() {
     const root = layout(), panel = find(root, "panel"), status = find(root, "status");
-    return workArea({ bar: shared("my-tabs.bounds"), window: this.size, panelWidth: panel && !panel.hidden ? panel.size?.px ?? 0 : 0, statusHeight: status?.size?.px ?? 0 });
+    return workArea({ bar: shared("my-tabs.bounds"), window: this.size, panelWidth: panel && !panel.hidden ? panel.size?.px ?? 0 : 0, statusHeight: status && !status.hidden ? status.size?.px ?? 0 : 0 });
   }
 
   zone() {
     return this.move.blocked ? null : dropZone(this.pos, this.area());
   }
 
-  dismiss() { try { const id = props()?.overlay; if (id) closeOverlay(id); } catch { /* nothing more to do */ } }
+  dismiss() {
+    try {
+      const id = props()?.overlay;
+      if (id) closeOverlay(id);
+      // Closing the layer drops keyboard focus; read the pane now so a finished move's focus is kept.
+      const pane = focused()?.pane;
+      if (pane) run("pane.focus", { pane });
+    } catch { /* nothing more to do */ }
+  }
 
   finish(position, cx) {
     if (this.done) return;
@@ -59,7 +67,9 @@ export default class MyTabDrag extends View {
         if (this.move.kind === "terminal") await this.moveTerminal(zone, cx);
         else await this.moveViewer(zone, cx);
       } catch (e) {
-        notify({ title: "탭을 옮기지 못했어요", body: String(e), level: "error", timeout: 5000 });
+        // Where the thing is, so it can be found: a terminal by `hc ls`, a file by its path.
+        const where = this.move.kind === "terminal" ? `터미널 ${this.move.terminal} (hc ls 로 찾을 수 있어요)` : `파일 ${this.move.path}`;
+        notify({ title: "탭을 옮기지 못했어요", body: `${e}\n${where}`, level: "error", timeout: 5000 });
       } finally { this.dismiss(); }
     });
   }
@@ -75,7 +85,7 @@ export default class MyTabDrag extends View {
       if (!await until(cx, () => Boolean(shown()))) throw new Error("터미널이 새 칸에 나타나지 않았어요");
     } catch (e) {
       // Parked but not placed: bring it back as a tab so the running terminal is not orphaned.
-      try { run("terminal.keep", { terminal, place: "tab" }); } catch { /* best effort */ }
+      if (!shown()) { try { run("terminal.keep", { terminal, place: "tab" }); } catch { /* best effort */ } }
       throw e;
     }
     if (swap) { run("pane.focus", { terminal }); run("pane.swap", { direction: swap }); }
@@ -88,9 +98,15 @@ export default class MyTabDrag extends View {
     if (!await until(cx, () => !panes().some(p => p.tab === tabId))) throw new Error("뷰어 탭을 닫지 못했어요");
     await cx.sleep(DRAFT_MS); // the closed viewer writes its last draft
     const before = new Set(panes().map(p => p.pane));
-    run("pane.split", { direction: place, mod: "my-viewer", props: { path, on, root: null } });
     const fresh = () => panes().find(p => p.mod === "my-viewer" && !before.has(p.pane));
-    if (!await until(cx, () => Boolean(fresh()))) throw new Error("새 칸이 나타나지 않았어요");
+    try {
+      run("pane.split", { direction: place, mod: "my-viewer", props: { path, on, root: null } });
+      if (!await until(cx, () => Boolean(fresh()))) throw new Error("새 칸이 나타나지 않았어요");
+    } catch (e) {
+      // The tab is already closed: reopen the file as a tab so it is not lost from view.
+      try { run("tab.new", { name: path.split(/[\\/]/).pop(), mod: "my-viewer", props: { path, on, root: null } }); } catch { /* best effort */ }
+      throw e;
+    }
     if (swap) { run("pane.focus", { pane: fresh().pane }); run("pane.swap", { direction: swap }); }
   }
 

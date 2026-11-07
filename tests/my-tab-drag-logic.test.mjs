@@ -35,6 +35,13 @@ test("tabMove: everything else says why not", () => {
   assert.deepEqual(move("viewer", { own: null }), { blocked: "이 탭은 옮길 수 없어요" });
 });
 
+test("tabMove: an agent with sub-agents stays, its child and a plain terminal move", () => {
+  assert.deepEqual(move("term", { parents: ["t2"] }), { blocked: "하위 에이전트가 있는 탭은 옮길 수 없어요" });
+  assert.deepEqual(move("term"), { kind: "terminal", terminal: "t2" });
+  assert.deepEqual(move("term", { parents: ["t1"] }), { kind: "terminal", terminal: "t2" });
+  assert.deepEqual(move("term", { parents: ["t1", "t2"], machine: "box" }), { blocked: "원격 탭은 옮길 수 없어요" });
+});
+
 const bar = { x: 274, y: 0, width: 2286, height: 42 };
 
 test("workArea: below the bar, above the status bar, beside the open panel", () => {
