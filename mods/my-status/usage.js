@@ -64,9 +64,9 @@ const findDay = (days, key) => days?.find(d => d.day === key) ?? null;
 /** The status bar's text, or null while nothing worth showing has been read. */
 export function usageSummary(usage, now) {
   const parts = [];
-  if (usage?.days) parts.push(`오늘 ${dollars(findDay(usage.days, dayKey(new Date(now)))?.cost ?? 0)}`);
+  if (usage?.days) parts.push(`Today ${dollars(findDay(usage.days, dayKey(new Date(now)))?.cost ?? 0)}`);
   const block = activeBlock(usage, now);
-  if (block) parts.push(`블록 ${dollars(block.cost)}`, `${leftText(block.end - now)} 남음`);
+  if (block) parts.push(`Block ${dollars(block.cost)}`, `${leftText(block.end - now)} left`); // English like the rest of the bar
   return parts.length ? parts.join(" · ") : null;
 }
 
