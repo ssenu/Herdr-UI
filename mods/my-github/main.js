@@ -178,14 +178,14 @@ export default class GitHub extends View {
     });
   }
 
-  // The close / merge row under the detail toolbar, or null when the item can't be acted on.
+  // The close / merge controls at the end of the detail toolbar, or null when the item can't be acted on.
   actionRow(t, button) {
     const d = this.detail, data = d.data;
     if (!canAct(d.kind, data)) return null;
     const pr = d.kind === "pr", key = itemKey(d.kind, data.number), context = this.context;
     const act = this.act?.key === key && this.act.context === context ? this.act : null; // same number in another repo is another item
     const start = method => ({ key, context, kind: d.kind, number: data.number, step: method || !pr ? "confirm" : "pick", method: method ?? null, error: null });
-    const row = h_flex().min_h(38).flex_none().px(14).py(6).gap(8).items_center().flex_wrap().border_b(1).border_color(t.border).text_size(12);
+    const row = h_flex().flex_none().gap(8).items_center().flex_wrap().text_size(12); // sits in the toolbar, after its buttons
     const cancel = button("gh-act-cancel", "취소", () => { this.act = null; });
     // One at a time: starting here while another runs would forget that one, and could run it twice.
     if (!act && this.act?.step === "running") return row.child(div().text_color(t.dim).child(`#${this.act.number} 처리가 끝나면 할 수 있어요`));
@@ -265,10 +265,10 @@ export default class GitHub extends View {
         .child(div().id("github-back").w(20).cursor_pointer().text_color(t.muted)
           .on_click((_e, cx) => { this.detail = null; if (this.act?.step !== "running") this.act = null; cx.notify(); }).child("←"))
         .child(div().flex_1().min_w(0).truncate().font_semibold().child(`#${item.number} ${item.title}`)),
-      h_flex().h(38).flex_none().px(14).gap(8).items_center().border_b(1).border_color(t.border)
+      h_flex().min_h(38).flex_none().px(14).py(6).gap(8).items_center().flex_wrap().border_b(1).border_color(t.border)
         .child(button("github-open", "브라우저로 열기", cx => cx.open_url(item.url)))
-        .child(button("github-agent", target ? `→ ${target.name} 입력창에 넣기` : "새 탭에서 Claude 시작", cx => this.handOff(cx))),
-      ...(d.data ? [this.actionRow(t, button)].filter(Boolean) : []),
+        .child(button("github-agent", target ? `→ ${target.name} 입력창에 넣기` : "새 탭에서 Claude 시작", cx => this.handOff(cx)))
+        .children(d.data ? [this.actionRow(t, button)].filter(Boolean) : []),
       d.error ? content.child(div().text_color(t.dim).child(d.error.message))
       : !data ? content.child(div().text_color(t.dim).child("불러오는 중…"))
       : content
