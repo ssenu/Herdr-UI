@@ -17,7 +17,7 @@ if (-not (Test-Path $app)) {
 }
 
 # 1. Mods
-$mods = @("my-files", "my-files-drag", "my-files-open", "my-github", "my-new-menu", "my-plugins", "my-sessions", "my-status", "my-status-dash", "my-tab-drag", "my-tabs", "my-usage-dash", "my-viewer")
+$mods = @("my-files", "my-files-drag", "my-files-open", "my-github", "my-new-menu", "my-plugins", "my-sessions", "my-status", "my-status-dash", "my-tab-drag", "my-tabs", "my-tasks", "my-usage-dash", "my-viewer")
 New-Item -ItemType Directory -Force (Join-Path $app "mods") | Out-Null
 foreach ($m in $mods) {
   $to = Join-Path $app "mods\$m"
@@ -89,6 +89,10 @@ if (-not (@($panelBody.children) | Where-Object { $_.id -eq "sessions" })) {
   $sessions = [pscustomobject]@{ id = "sessions"; type = "block"; content = [pscustomobject]@{ mod = "my-sessions" } }
   $panelBody.children = @($panelBody.children) + $sessions
 }
+if (-not (@($panelBody.children) | Where-Object { $_.id -eq "tasks" })) {
+  $tasks = [pscustomobject]@{ id = "tasks"; type = "block"; content = [pscustomobject]@{ mod = "my-tasks" } }
+  $panelBody.children = @($panelBody.children) + $tasks
+}
 
 $out = $doc | ConvertTo-Json -Depth 100
 [IO.File]::WriteAllText($file, $out, (New-Object Text.UTF8Encoding $false))
@@ -108,5 +112,5 @@ if (Get-Command herdr-app -ErrorAction SilentlyContinue) {
     else { Write-Host "레이아웃을 '$Layout' 으로 바꾸지 못했어요. Herdr에서 직접 골라 주세요." -ForegroundColor Yellow }
   }
 }
-Write-Host "완료. 탭 바에 Files · Changes · GitHub · Plugin · Session 버튼이 보이면 성공이에요."
+Write-Host "완료. 탭 바에 Files · Changes · GitHub · Plugin · Session · Task 버튼이 보이면 성공이에요."
 exit 0

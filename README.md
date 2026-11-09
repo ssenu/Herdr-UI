@@ -9,7 +9,8 @@
 - **GitHub 패널**: 지금 저장소의 이슈·PR 목록과 본문, 에이전트에게 작업 넘기기, 이슈 닫기·PR 머지
 - **Plugins 패널**: Claude Code·Codex가 지금 폴더에서 보는 MCP 서버와 스킬 목록
 - **Sessions 패널**: 지금 저장소의 Claude Code 세션 목록. 누르면 새 탭에서 다시 열기, 열려 있는 세션은 초록 점
-- **탭 바**: 패널 버튼(GitHub · Plugin · Session), `+` 메뉴의 파일 뷰어, 스페이스별로 기억하는 패널
+- **Task 패널**: Google Tasks 목록과 할 일 보기·추가·완료·편집·삭제, 하위 할 일과 순서 바꾸기
+- **탭 바**: 패널 버튼(GitHub · Plugin · Session · Task), `+` 메뉴의 파일 뷰어, 스페이스별로 기억하는 패널
 - **탭을 끌어 분할하기**: 탭을 화면 가장자리에 놓으면 분할, 옮긴 칸은 탭 바에 칩으로 남음
 - **하단 바**: 이 PC의 CPU·RAM·GPU와 ccusage 사용량(오늘 · 5시간 구간 · 남은 시간), 마우스를 올리면 작은 대시보드
 
@@ -23,13 +24,14 @@
 | `my-github` | 현재 저장소의 GitHub 이슈·PR 패널 (gh CLI 사용) |
 | `my-plugins` | 지금 폴더에서 Claude Code·Codex가 보는 MCP 서버와 스킬 목록 (읽기 전용) |
 | `my-sessions` | 지금 저장소의 Claude Code 세션 목록. 누르면 새 탭에서 다시 열기 |
+| `my-tasks` | Google Tasks 목록과 할 일 패널 (Node.js와 직접 만든 OAuth 클라이언트 사용) |
 | `my-new-menu` | 기본 `+` 메뉴의 복제본. "파일 뷰어" 항목 추가 |
 | `my-viewer` | 터미널처럼 탭으로 열리는 파일 뷰어·편집기 |
 | `my-status` | 기본 하단 바의 복제본. 이 PC의 CPU·RAM·GPU와 ccusage 사용량 표시 |
 | `my-status-dash` | 하단 바 수치에 마우스를 올리면 뜨는 최근 5분 그래프 |
 | `my-usage-dash` | 하단 바 사용량에 마우스를 올리면 뜨는 사용량 대시보드 |
 | `my-tab-drag` | 탭을 끌어 작업 화면의 가장자리에 놓으면 분할 |
-| `my-tabs` | 기본 탭 바의 복제본. Files · Changes 옆에 GitHub · Plugin · Session 버튼 추가 |
+| `my-tabs` | 기본 탭 바의 복제본. Files · Changes 옆에 GitHub · Plugin · Session · Task 버튼 추가 |
 
 ## 기능
 
@@ -104,6 +106,24 @@
 - 세션 파일의 앞뒤 일부만 읽어 제목·폴더·브랜치만 가져옵니다. 대화 내용은 읽어 오지 않습니다. 사용자 메시지가 없는 빈 세션은 목록에서 뺍니다.
 - 원격 스페이스에서는 그 머신의 세션을 읽습니다. 패널이 보이는 동안 30초마다 다시 읽고, ⟳ 로 바로 새로고침합니다. 같은 저장소 안에서 칸을 옮기면 목록을 유지한 채 다시 읽습니다.
 
+### Task 패널 (`my-tasks`)
+
+- 탭 바의 **Task** 버튼으로 엽니다. Google Tasks의 목록과 할 일을 보여 주고, 패널에서 바로 고칩니다.
+- 맨 위에서 목록을 고르고, `[+]` 로 새 목록을 만들고, `[⋯]` 에서 목록 이름 바꾸기·삭제와 로그아웃을 합니다. 마지막으로 고른 목록을 기억합니다.
+- 입력칸에 쓰고 Enter를 누르면 목록 맨 위에 추가됩니다. `○` 를 누르면 완료되고, 완료한 할 일은 아래 **완료됨**을 펼쳐 보고 `✓` 로 되돌립니다.
+- 행에 마우스를 올리면 `↑` `↓`(순서), `⇥`(바로 위 할 일의 하위로), `⇤`(하위에서 빼기), `🗑`(삭제, 한 번 더 확인)가 나옵니다. 하위 할 일은 Google Tasks처럼 한 단계까지입니다.
+- 제목을 누르면 그 자리에서 제목·메모·마감일(`YYYY-MM-DD`)을 고칩니다. 마감일은 날짜만 있고, 지난 날짜는 강조색입니다.
+- 패널이 보이는 동안 2분마다 다시 읽고, ⟳ 로 바로 새로고침합니다. 원격 스페이스에서도 이 PC에서 실행합니다.
+
+**처음 한 번: Google 계정 연결**
+
+1. [Google Cloud 콘솔](https://console.cloud.google.com)에서 프로젝트를 만들고, **API 및 서비스 → 라이브러리**에서 **Google Tasks API**를 사용 설정합니다.
+2. **OAuth 동의 화면**에서 사용자 유형 **외부**로 앱을 만들고, **게시 상태를 "프로덕션"으로** 바꿉니다. "테스트" 상태로 두면 Google이 7일마다 로그인을 끊습니다.
+3. **사용자 인증 정보 → OAuth 클라이언트 ID 만들기**에서 유형 **데스크톱 앱**을 고르고, 만든 클라이언트의 JSON을 내려받아 `~\.config\herdr-app\my-tasks\client.json` 으로 저장합니다(폴더가 없으면 만듭니다).
+4. 패널의 **[로그인]** 을 누르면 브라우저가 열립니다. "Google에서 확인하지 않은 앱" 경고가 뜨면 직접 만든 앱이므로 **고급 → (앱 이름)(으)로 이동**을 눌러 계속하고 허용합니다.
+
+- 요청하는 권한은 Google Tasks 하나(`auth/tasks`)뿐입니다. 토큰은 `~\.config\herdr-app\my-tasks\token.json` 에만 저장되고 저장소에는 들어가지 않습니다. 로그아웃하면 Google에 토큰 취소를 보내고 파일을 지웁니다.
+
 ### 시스템 모니터 (`my-status`)
 
 - 하단 바 오른쪽에 **이 PC**의 `CPU 13%  RAM 19.7/31.4GB  GPU 8%` 를 5초마다 갱신해 보여 줍니다. 사용률 90% 이상이면 강조색으로 바뀝니다. Windows에서만 표시합니다.
@@ -123,6 +143,7 @@
 - Herdr 앱 (0.1.13에서 확인). 설치 스크립트는 Windows(PowerShell)용입니다. 다른 OS는 [수동 설치](#수동-설치)를 보세요.
 - GitHub 패널: [GitHub CLI](https://cli.github.com) `gh` 가 설치되고 로그인돼 있어야 합니다(`gh auth login`). 원격 스페이스에서 쓰려면 그 머신에도 gh가 있어야 합니다.
 - Sessions 패널: 세션을 여는 머신에 Claude Code의 `claude` 명령이 있어야 합니다.
+- Task 패널: Node.js 18 이상(`node` 명령)과 직접 만든 Google Cloud OAuth 클라이언트([Task 패널](#task-패널-my-tasks) 참고).
 - [nano로 열기]: 그 머신에 `nano`가 있어야 합니다. Windows에서는 Git for Windows에 들어 있습니다.
 - [VS Code로 열기]: `code` 명령이 PATH에 있어야 합니다(VS Code 설치 시 기본값).
 - 하단 바 사용량: Node.js(`npx`)가 있어야 합니다.
@@ -139,7 +160,7 @@ cd Herdr-UI
 
 설치 스크립트가 하는 일:
 
-1. `mods\` 의 열세 mod를 `~\.config\herdr-app\mods\` 에 복사합니다.
+1. `mods\` 의 열네 mod를 `~\.config\herdr-app\mods\` 에 복사합니다.
 2. 레이아웃 `my-layout` 을 고칩니다. 없으면 기본 레이아웃 `main` 을 `my-layout` 으로 복제한 뒤 고칩니다.
    - Files 칸: `files` → `my-files`
    - 탭 바: `tabs` → `my-tabs`
@@ -147,6 +168,7 @@ cd Herdr-UI
    - 오른쪽 패널(`panel-body`)에 `github` 칸(`my-github`) 추가
    - 오른쪽 패널(`panel-body`)에 `plugins` 칸(`my-plugins`) 추가
    - 오른쪽 패널(`panel-body`)에 `sessions` 칸(`my-sessions`) 추가
+   - 오른쪽 패널(`panel-body`)에 `tasks` 칸(`my-tasks`) 추가
    - 고치기 전 파일은 `my-layout.json.bak-<시각>` 으로 백업합니다.
 3. 지금 레이아웃이 `my-layout` 이 아니면 그 레이아웃으로 바꿉니다.
 
@@ -170,12 +192,12 @@ mod와 레이아웃은 저장하면 바로 적용되므로 앱을 다시 켤 필
 |---|---|---|
 | **하단 바** (시스템 모니터 + 사용량) | `my-status`, `my-status-dash`, `my-usage-dash` | `"mod": "workspace-status"` → `"my-status"` |
 | **Files 패널** (+ 탭 바에 드롭해 여는 파일 뷰어) | `my-files`, `my-files-drag`, `my-files-open`, `my-viewer` | `"mod": "files"` → `"my-files"` |
-| **탭 바와 패널** (GitHub · Plugins · Sessions, `+` 파일 뷰어, 탭 끌어 분할) | `my-tabs`, `my-new-menu`, `my-tab-drag`, `my-github`, `my-plugins`, `my-sessions`, `my-viewer`, `my-files`, `my-files-drag`, `my-files-open` | `"mod": "tabs"` → `"my-tabs"`, `panel-body` 에 github · plugins · sessions 칸 추가 |
+| **탭 바와 패널** (GitHub · Plugins · Sessions · Task, `+` 파일 뷰어, 탭 끌어 분할) | `my-tabs`, `my-new-menu`, `my-tab-drag`, `my-github`, `my-plugins`, `my-sessions`, `my-tasks`, `my-viewer`, `my-files`, `my-files-drag`, `my-files-open` | `"mod": "tabs"` → `"my-tabs"`, `panel-body` 에 github · plugins · sessions · tasks 칸 추가 |
 
 - **하단 바**는 다른 묶음 없이 혼자 동작합니다.
 - **Files 패널**만 넣으면 기본 탭 바를 그대로 쓰므로 패널 버튼과 `+` 메뉴의 파일 뷰어는 없습니다. 파일을 탭 바(창 맨 위)에 끌어 놓으면 뷰어 탭이 열립니다.
 - **탭 바와 패널**이 한 묶음인 이유:
-  - GitHub · Plugin · Session 버튼은 `my-tabs` 에 있고, 버튼은 세 패널이 있다고 보고 항상 보입니다.
+  - GitHub · Plugin · Session · Task 버튼은 `my-tabs` 에 있고, 버튼은 네 패널이 있다고 보고 항상 보입니다.
   - `+` 메뉴(`my-new-menu`)와 탭 끌기(`my-tab-drag`)도 `my-tabs` 가 엽니다.
   - 뷰어와 `+` 메뉴는 `my-files` 의 아이콘을, 패널의 `⋯` 메뉴와 끌기는 `my-files-open` · `my-files-drag` 를 씁니다. 그래서 `my-files` 폴더는 복사하되, 레이아웃의 Files 칸은 기본 `files` 로 둬도 됩니다.
 - 폴더를 손으로 복사할 때는 **Herdr를 끄고** 복사하거나, 각 폴더의 `mod.json` 을 먼저 넣으세요. 앱이 켜진 상태에서 `mod.json` 없는 새 mod 폴더가 생기면, 앱이 그것을 레이아웃에 칸으로 끼워 넣습니다.
@@ -183,7 +205,7 @@ mod와 레이아웃은 저장하면 바로 적용되므로 앱을 다시 켤 필
 
 ## 수동 설치
 
-1. `mods/` 안의 열세 폴더를 `~/.config/herdr-app/mods/` 에 복사합니다.
+1. `mods/` 안의 열네 폴더를 `~/.config/herdr-app/mods/` 에 복사합니다.
 2. 쓰는 레이아웃(`~/.config/herdr-app/layouts/<이름>.json`, 기본 레이아웃이면 먼저 `herdr-app do layout.clone --name main --as my-layout`)에서:
    - `"mod": "files"` → `"mod": "my-files"`
    - `"mod": "tabs"` → `"mod": "my-tabs"`
@@ -192,7 +214,8 @@ mod와 레이아웃은 저장하면 바로 적용되므로 앱을 다시 켤 필
      ```json
      { "id": "github", "type": "block", "content": { "mod": "my-github" } },
      { "id": "plugins", "type": "block", "content": { "mod": "my-plugins" } },
-     { "id": "sessions", "type": "block", "content": { "mod": "my-sessions" } }
+     { "id": "sessions", "type": "block", "content": { "mod": "my-sessions" } },
+     { "id": "tasks", "type": "block", "content": { "mod": "my-tasks" } }
      ```
 3. `herdr-app status` 의 `errors` 가 비어 있으면 됩니다.
 
@@ -207,9 +230,10 @@ mod는 덮어씁니다. 레이아웃은 백업한 뒤 빠진 칸만 추가하므
 
 ## 제거
 
-1. 백업(`layouts\my-layout.json.bak-<시각>`)을 `my-layout.json` 으로 되돌리거나, 위 여섯 가지를 원래대로(`files`, `tabs`, `workspace-status`, github·plugins·sessions 칸 삭제) 고칩니다.
-2. `~\.config\herdr-app\mods\` 에서 `my-files`, `my-files-drag`, `my-files-open`, `my-github`, `my-new-menu`, `my-plugins`, `my-sessions`, `my-status`, `my-status-dash`, `my-tab-drag`, `my-tabs`, `my-usage-dash`, `my-viewer` 폴더를 지웁니다.
+1. 백업(`layouts\my-layout.json.bak-<시각>`)을 `my-layout.json` 으로 되돌리거나, 위 여섯 가지를 원래대로(`files`, `tabs`, `workspace-status`, github·plugins·sessions·tasks 칸 삭제) 고칩니다.
+2. `~\.config\herdr-app\mods\` 에서 `my-files`, `my-files-drag`, `my-files-open`, `my-github`, `my-new-menu`, `my-plugins`, `my-sessions`, `my-status`, `my-status-dash`, `my-tab-drag`, `my-tabs`, `my-tasks`, `my-usage-dash`, `my-viewer` 폴더를 지웁니다.
 3. 뷰어 초안까지 지우려면 `~\.config\herdr-app\data\my-viewer\` 를 지웁니다.
+4. Task 패널의 연결까지 지우려면 패널에서 로그아웃한 뒤 `~\.config\herdr-app\my-tasks` 를 지웁니다.
 
 ## 알려진 한계
 
@@ -225,6 +249,7 @@ mod는 덮어씁니다. 레이아웃은 백업한 뒤 빠진 칸만 추가하므
 - 파일 뷰어는 이미지·PDF를 탭에서 보여 주지 않습니다(외부 프로그램으로 엽니다). 탭을 닫을 때 묻지 않는 대신 초안을 복원합니다. 초안은 그 PC에만 남습니다. 1 MiB가 넘는 파일은 읽지 못합니다. 탭 바에 드롭하기 전까지 마우스가 탭 바 위를 한 번도 지나지 않았으면 창 맨 위 40px을 탭 바로 칩니다.
 - 탭 끌어 분할하기는 한 칸짜리 터미널·에이전트 탭과 파일을 연 뷰어 탭만 옮깁니다. 지금 보고 있는 탭과 원격 탭, 하위 에이전트가 있는 에이전트 탭은 옮기지 않습니다. 같은 파일을 두 뷰어로 열면 각자 수정 내용을 따로 가지고 초안은 하나를 같이 쓰므로, 마지막에 쓴 쪽이 남습니다. 뷰어를 옮기면 실행 취소 기록과 스크롤 위치는 처음으로 돌아갑니다. 이미 나뉜 화면에서는 포커스된 칸이 나뉩니다. 분할 칸의 뷰어는 탭 이름에 `●` 가 없고, 같은 파일을 다시 드롭하면 새 탭이 열립니다. 같은 터미널을 탭과 분할 칸에 동시에 띄울 수는 없어서, 탭 대신 칩이 남습니다. 칩은 끌 수 없고 우클릭 메뉴가 없으며, 탭으로 빼면 탭 바 끝에 생깁니다. 탭의 `×` 는 칩의 칸까지 탭 전체를 닫습니다. 왼쪽과 위쪽은 이웃한 칸과 자리를 바꾸는 방식이라, 이미 나뉜 화면에서는 그 칸의 배치에 따라 결과가 달라질 수 있습니다. 레이아웃의 터미널 블록에 포커스가 있으면 "분할할 칸을 먼저 눌러 주세요"라는 안내가 뜨고 탭은 그대로 남습니다.
 - 시스템 모니터는 Windows에서만, 항상 이 PC의 값을 보여 줍니다. 5초마다 PowerShell을 한 번 실행합니다. 그래프는 메모리에만 있어 앱을 끄면 사라집니다. GPU 값은 작업 관리자와 조금 다를 수 있습니다.
+- Task 패널은 Google Tasks만 다룹니다(Google Keep 없음). 마감 시각, 반복, 하위의 하위는 Google Tasks API에 없어서 다루지 않습니다. 순서는 끌기 대신 버튼으로 바꿉니다. 할 일이 많은 목록은 읽을 때 100개마다 요청이 하나씩 늘어납니다.
 
 ## 개발
 
