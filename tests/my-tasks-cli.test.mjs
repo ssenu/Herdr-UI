@@ -63,3 +63,14 @@ test("makeEnv keeps its files in <app>/my-tasks", () => {
   assert.equal(env.tokenPath.replaceAll("\\", "/"), "/app/my-tasks/token.json");
   assert.equal(typeof env.fetch, "function");
 });
+
+test("makeEnv().writeFile writes atomically and leaves no .tmp file", async () => {
+  const fs = await import("node:fs"), os = await import("node:os"), path = await import("node:path");
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "my-tasks-"));
+  try {
+    const env = C.makeEnv(dir);
+    env.writeFile(env.tokenPath, "x");
+    assert.equal(env.readFile(env.tokenPath), "x");
+    assert.deepEqual(fs.readdirSync(dir), ["token.json"]);
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});

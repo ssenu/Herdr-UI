@@ -31,7 +31,7 @@ export function parseOutput(stdout, stderr = "") {
 /** `exec` rejected: its time limit, or the program could not start. */
 export function execError(e) {
   const text = String(e?.message ?? e ?? "");
-  return /time/i.test(text) ? { kind: "timeout", message: text } : { kind: "no-node", message: text };
+  return /timed?\s?out|timeout/i.test(text) ? { kind: "timeout", message: text } : { kind: "no-node", message: text };
 }
 
 const byPosition = (a, b) => ((a.position ?? "") < (b.position ?? "") ? -1 : (a.position ?? "") > (b.position ?? "") ? 1 : 0);
@@ -68,11 +68,21 @@ export function moveArgs(tree, id, dir) {
   const at = locate(tree, id);
   if (!at) return null;
   const { siblings, index, parent, node } = at, parentId = parent?.id ?? null;
-  if (dir === "up") return index > 0 ? { parent: parentId, previous: siblings[index - 2]?.id ?? null } : null;
-  if (dir === "down") return index < siblings.length - 1 ? { parent: parentId, previous: siblings[index + 1].id } : null;
+  // A promoted orphan (shown as a root but with a parent set) has no reliable place to move to or from.
+  const promoted = t => !!t?.parent && !parent;
+  if (promoted(node)) return null;
+  if (dir === "up") {
+    if (index === 0 || promoted(siblings[index - 2])) return null;
+    return { parent: parentId, previous: siblings[index - 2]?.id ?? null };
+  }
+  if (dir === "down") {
+    if (index >= siblings.length - 1 || promoted(siblings[index + 1])) return null;
+    return { parent: parentId, previous: siblings[index + 1].id };
+  }
   if (dir === "indent") {
     if (parent || index === 0 || node.children.length) return null;
     const target = siblings[index - 1];
+    if (promoted(target)) return null;
     return { parent: target.id, previous: target.children.at(-1)?.id ?? null };
   }
   if (dir === "outdent") return parent ? { parent: null, previous: parent.id } : null;

@@ -1,7 +1,7 @@
 // Google Tasks helper for the my-tasks mod: `node tasks.mjs <command> [--flag value]... -- [args]...`
 // Prints exactly one JSON line: {"ok":true,"data":...} or {"ok":false,"error":{"kind":"...","message":"..."}}.
 // Its files live in <Herdr app folder>/my-tasks/ (two folders up from this file, then my-tasks).
-import { readFileSync, writeFileSync, mkdirSync, rmSync } from "node:fs";
+import { readFileSync, writeFileSync, mkdirSync, rmSync, renameSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { createServer } from "node:http";
@@ -47,7 +47,14 @@ export function makeEnv(dir = join(dirname(fileURLToPath(import.meta.url)), ".."
   return {
     fetch: (...a) => globalThis.fetch(...a),
     readFile: p => { try { return readFileSync(p, "utf8"); } catch { return null; } },
-    writeFile: (p, s) => { mkdirSync(dirname(p), { recursive: true }); writeFileSync(p, s, { mode: 0o600 }); },
+    // Atomic: write a temp file, then rename over the target. On Windows the mode is ignored and the
+    // file relies on the permissions of the user-profile folder.
+    writeFile: (p, s) => {
+      mkdirSync(dirname(p), { recursive: true });
+      const tmp = `${p}.tmp`;
+      writeFileSync(tmp, s, { mode: 0o600 });
+      renameSync(tmp, p);
+    },
     removeFile: p => rmSync(p, { force: true }),
     now: () => Date.now(),
     clientPath: join(dir, "client.json"),
@@ -69,10 +76,11 @@ function login(env) {
   const client = G.readClient(env);
   const verifier = b64url(randomBytes(32)), challenge = b64url(createHash("sha256").update(verifier).digest()), state = b64url(randomBytes(16));
   return new Promise((resolve, reject) => {
-    let redirect = "", finished = false;
-    const page = (res, message) => {
+    let redirect = "", finished = false, handling = false;
+    // Sends a page; `then` runs once the response has been flushed.
+    const page = (res, message, then) => {
       res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
-      res.end(`<!doctype html><meta charset="utf-8"><title>Herdr Task</title><p style="font:16px sans-serif;margin:40px">${html(message)}</p>`);
+      res.end(`<!doctype html><meta charset="utf-8"><title>Herdr Task</title><p style="font:16px sans-serif;margin:40px">${html(message)}</p>`, then);
     };
     const finish = error => {
       if (finished) return;
@@ -82,18 +90,28 @@ function login(env) {
       if (error) reject(error); else resolve({ loggedIn: true });
     };
     const server = createServer(async (req, res) => {
-      const url = new URL(req.url ?? "/", "http://127.0.0.1");
-      if (url.pathname !== "/") { res.writeHead(404).end(); return; }
-      if (url.searchParams.get("state") !== state) { page(res, "요청이 맞지 않아요. Herdr에서 다시 로그인해 주세요."); return; }
-      const denied = url.searchParams.get("error");
-      if (denied) { page(res, `연결하지 못했어요: ${denied}`); finish(new G.TasksError("api", `로그인을 거부했어요: ${denied}`)); return; }
       try {
-        await G.exchangeCode(env, client, { code: url.searchParams.get("code") ?? "", verifier, redirect });
-        page(res, "연결됐어요. 이 창을 닫아도 돼요.");
-        finish(null);
+        const url = new URL(req.url ?? "/", "http://127.0.0.1");
+        if (url.pathname !== "/") { res.writeHead(404).end(); return; }
+        // Once a valid callback is being handled, every later request just gets a neutral page.
+        if (handling) { page(res, "이미 처리 중이에요. 이 창을 닫아도 돼요."); return; }
+        if (url.searchParams.get("state") !== state) { page(res, "요청이 맞지 않아요. Herdr에서 다시 로그인해 주세요."); return; }
+        handling = true;
+        const denied = url.searchParams.get("error");
+        if (denied) {
+          page(res, `연결하지 못했어요: ${denied}`, () => finish(new G.TasksError("api", `로그인을 거부했어요: ${denied}`)));
+          return;
+        }
+        try {
+          await G.exchangeCode(env, client, { code: url.searchParams.get("code") ?? "", verifier, redirect });
+        } catch (e) {
+          page(res, `연결하지 못했어요: ${e?.message ?? e}`, () => finish(e));
+          return;
+        }
+        page(res, "연결됐어요. 이 창을 닫아도 돼요.", () => finish(null));
       } catch (e) {
-        page(res, `연결하지 못했어요: ${e?.message ?? e}`);
-        finish(e);
+        const err = new G.TasksError("internal", String(e?.message ?? e));
+        try { page(res, "연결하지 못했어요.", () => finish(err)); } catch { finish(err); }
       }
     });
     const timer = setTimeout(() => finish(new G.TasksError("api", "로그인 시간이 지났어요. 다시 시도해 주세요")), LOGIN_WAIT_MS);

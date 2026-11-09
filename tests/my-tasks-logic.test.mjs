@@ -33,6 +33,8 @@ test("parseOutput reads the last JSON line", () => {
 test("execError tells a time limit from a missing program", () => {
   assert.equal(L.execError(new Error("timed out after 30000ms")).kind, "timeout");
   assert.equal(L.execError(new Error("program not found")).kind, "no-node");
+  assert.equal(L.execError(new Error("Command timed out")).kind, "timeout");
+  assert.equal(L.execError(new Error("runtime error")).kind, "no-node");
 });
 
 test("buildTree orders by position, nests children, splits completed (newest first)", () => {
@@ -156,4 +158,14 @@ test("notesPreview is the first non-blank line", () => {
   assert.equal(L.notesPreview(null), null);
   assert.equal(L.notesPreview(""), null);
   assert.equal(L.notesPreview("  \n "), null);
+});
+
+test("moveArgs: no moves for or around a promoted orphan", () => {
+  const t = L.buildTree([T("a", "1"), T("o", "2", { parent: "gone" }), T("b", "3"), T("c", "4")]);
+  for (const dir of ["up", "down", "indent", "outdent"]) assert.equal(L.moveArgs(t, "o", dir), null);
+  assert.equal(L.moveArgs(t, "a", "down"), null); // would reference the orphan
+  assert.equal(L.moveArgs(t, "b", "indent"), null); // orphan above is no indent target
+  assert.equal(L.moveArgs(t, "c", "up"), null); // previous would be the orphan
+  assert.deepEqual(L.moveArgs(t, "c", "down"), null);
+  assert.deepEqual(L.moveArgs(t, "b", "up"), { parent: null, previous: "a" });
 });

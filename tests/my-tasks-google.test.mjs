@@ -178,3 +178,18 @@ test("exchangeCode saves the tokens", async () => {
   assert.equal(form.get("redirect_uri"), "http://127.0.0.1:1");
   assert.deepEqual(JSON.parse(env.files.get("/t.json")), { access_token: "a2", refresh_token: "r2", expiry: 1_000_000 + 100_000 });
 });
+
+test("exchangeCode without a refresh_token fails and writes nothing", async () => {
+  const env = fakeEnv({ token: null, responses: [{ json: { access_token: "a2", expires_in: 100 } }] });
+  await assert.rejects(G.exchangeCode(env, { id: "cid", secret: "sec" }, { code: "c", verifier: "v", redirect: "http://127.0.0.1:1" }), kindIs("api"));
+  assert.equal(env.files.has("/t.json"), false);
+});
+
+test("api calls pass an abort signal", async () => {
+  let signal;
+  const env = fakeEnv({ responses: [{ json: { items: [] } }] });
+  const f = env.fetch;
+  env.fetch = async (url, init) => { signal = init.signal; return f(url, init); };
+  await G.lists(env);
+  assert.ok(signal instanceof AbortSignal);
+});

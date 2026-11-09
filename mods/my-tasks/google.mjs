@@ -6,6 +6,7 @@ export const AUTH_URL = "https://accounts.google.com/o/oauth2/v2/auth";
 export const TOKEN_URL = "https://oauth2.googleapis.com/token";
 export const REVOKE_URL = "https://oauth2.googleapis.com/revoke";
 export const API = "https://tasks.googleapis.com/tasks/v1";
+const FETCH_TIMEOUT_MS = 25000;
 
 export class TasksError extends Error {
   constructor(kind, message) { super(message); this.kind = kind; }
@@ -40,7 +41,7 @@ export function authUrl(client, { redirect, challenge, state }) {
 async function postForm(env, url, form) {
   let r;
   try {
-    r = await env.fetch(url, { method: "POST", headers: { "Content-Type": "application/x-www-form-urlencoded" }, body: new URLSearchParams(form).toString() });
+    r = await env.fetch(url, { method: "POST", headers: { "Content-Type": "application/x-www-form-urlencoded" }, body: new URLSearchParams(form).toString(), signal: AbortSignal.timeout(FETCH_TIMEOUT_MS) });
   } catch (e) { throw new TasksError("network", String(e?.message ?? e)); }
   const body = await r.json().catch(() => ({}));
   return { ok: r.ok, status: r.status, body: body ?? {} };
@@ -53,6 +54,7 @@ export async function exchangeCode(env, client, { code, verifier, redirect }) {
     code, client_id: client.id, client_secret: client.secret, redirect_uri: redirect, grant_type: "authorization_code", code_verifier: verifier,
   });
   if (!r.ok) throw new TasksError("api", oauthMessage(r));
+  if (!r.body.refresh_token) throw new TasksError("api", "Google이 refresh token을 주지 않았어요. 다시 로그인해 주세요");
   const token = { access_token: r.body.access_token, refresh_token: r.body.refresh_token, expiry: env.now() + (r.body.expires_in ?? 3600) * 1000 };
   env.writeFile(env.tokenPath, JSON.stringify(token));
   return token;
@@ -81,6 +83,7 @@ async function api(env, method, path, { query, body } = {}) {
       method,
       headers: { Authorization: `Bearer ${token}`, ...(body ? { "Content-Type": "application/json" } : {}) },
       body: body ? JSON.stringify(body) : undefined,
+      signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
     });
   } catch (e) { throw new TasksError("network", String(e?.message ?? e)); }
   if (r.status === 204) return null;
@@ -154,7 +157,7 @@ export async function logout(env) {
   try { token = readToken(env); } catch {}
   if (token) {
     try {
-      await env.fetch(REVOKE_URL, { method: "POST", headers: { "Content-Type": "application/x-www-form-urlencoded" }, body: new URLSearchParams({ token: token.refresh_token }).toString() });
+      await env.fetch(REVOKE_URL, { method: "POST", headers: { "Content-Type": "application/x-www-form-urlencoded" }, body: new URLSearchParams({ token: token.refresh_token }).toString(), signal: AbortSignal.timeout(FETCH_TIMEOUT_MS) });
     } catch {}
   }
   env.removeFile(env.tokenPath);
