@@ -2,8 +2,6 @@
 
 export const REFRESH_MS = 120000;
 export const LOGIN_TIMEOUT_MS = 310000;
-// Printed by `node -e`: the Herdr app folder, where the installed helper lives under mods/my-tasks.
-export const APP_DIR_SCRIPT = "process.stdout.write(process.env.HERDR_APP_HOME || require('path').join(require('os').homedir(), '.config', 'herdr-app'))";
 
 export function helperPath(appDir) {
   return appDir.replace(/[\\/]+$/, "") + "/mods/my-tasks/tasks.mjs";
@@ -68,9 +66,10 @@ export function moveArgs(tree, id, dir) {
   const at = locate(tree, id);
   if (!at) return null;
   const { siblings, index, parent, node } = at, parentId = parent?.id ?? null;
-  // A promoted orphan (shown as a root but with a parent set) has no reliable place to move to or from.
+  // A promoted root (shown as a root but with a parent set) has no reliable place to move within; it may only outdent.
   const promoted = t => !!t?.parent && !parent;
-  if (promoted(node)) return null;
+  // A promoted root can only go to the top level, first.
+  if (promoted(node)) return dir === "outdent" ? { parent: null, previous: null } : null;
   if (dir === "up") {
     if (index === 0 || promoted(siblings[index - 2])) return null;
     return { parent: parentId, previous: siblings[index - 2]?.id ?? null };

@@ -8,7 +8,6 @@ const T = (id, position, extra = {}) => ({ id, title: id, position, status: "nee
 test("constants", () => {
   assert.equal(L.REFRESH_MS, 120000);
   assert.equal(L.LOGIN_TIMEOUT_MS, 310000);
-  assert.match(L.APP_DIR_SCRIPT, /HERDR_APP_HOME/);
 });
 
 test("helperPath joins the app folder and the helper", () => {
@@ -160,9 +159,12 @@ test("notesPreview is the first non-blank line", () => {
   assert.equal(L.notesPreview("  \n "), null);
 });
 
-test("moveArgs: no moves for or around a promoted orphan", () => {
+test("moveArgs: a promoted orphan can only outdent; nothing moves around it", () => {
   const t = L.buildTree([T("a", "1"), T("o", "2", { parent: "gone" }), T("b", "3"), T("c", "4")]);
-  for (const dir of ["up", "down", "indent", "outdent"]) assert.equal(L.moveArgs(t, "o", dir), null);
+  for (const dir of ["up", "down", "indent"]) assert.equal(L.moveArgs(t, "o", dir), null);
+  assert.deepEqual(L.moveArgs(t, "o", "outdent"), { parent: null, previous: null });
+  assert.equal(L.canMove(t, "o", "outdent"), true);
+  assert.equal(L.moveArgs(t, "o", "sideways"), null);
   assert.equal(L.moveArgs(t, "a", "down"), null); // would reference the orphan
   assert.equal(L.moveArgs(t, "b", "indent"), null); // orphan above is no indent target
   assert.equal(L.moveArgs(t, "c", "up"), null); // previous would be the orphan

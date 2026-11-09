@@ -155,5 +155,10 @@ export async function main(argv, env = makeEnv(), out = s => process.stdout.writ
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
-  main(process.argv.slice(2), makeEnv(), s => new Promise(r => process.stdout.write(s + "\n", r))).then(() => process.exit(0));
+  const write = s => new Promise(r => process.stdout.write(s + "\n", r));
+  if (typeof globalThis.fetch !== "function" || typeof AbortSignal?.timeout !== "function") {
+    write(JSON.stringify({ ok: false, error: { kind: "internal", message: "Node.js 18 이상이 필요해요" } })).then(() => process.exit(0));
+  } else {
+    main(process.argv.slice(2), makeEnv(), write).then(() => process.exit(0));
+  }
 }

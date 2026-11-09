@@ -2,9 +2,9 @@
 // Every Google call goes through tasks.mjs (node), which prints one JSON line. Jobs run one at a time, in order.
 import { View, div } from "gpui-kit";
 import { v_flex, h_flex, InputState, Input, TextareaState, Textarea } from "gpui-base";
-import { exec, theme, layout } from "herdr";
+import { exec, theme, layout, appHome } from "herdr";
 import {
-  REFRESH_MS, LOGIN_TIMEOUT_MS, APP_DIR_SCRIPT, helperPath, command, parseOutput, execError, buildTree, moveArgs, canMove,
+  REFRESH_MS, LOGIN_TIMEOUT_MS, helperPath, command, parseOutput, execError, buildTree, moveArgs, canMove,
   dueLabel, todayString, parseDue, errorText, deleteText, listDeleteText, notesPreview,
 } from "./logic.js";
 
@@ -30,8 +30,8 @@ export default class Tasks extends View {
     this.screen = "loading"; // "loading" | "login" | "list"
     this.loginInfo = errorText({ kind: "no-login" });
     this.waiting = null; // the login attempt being waited on
-    this.lists = []; this.listId = localStorage.getItem("list");
-    this.tasks = []; this.tree = buildTree([]);
+    this.lists = []; this.listId = localStorage.getItem("my-tasks.list");
+    this.tasks = []; this.tree = buildTree([]); this.loadedList = null; // the list this.tasks belongs to
     this.showDone = false; this.pickOpen = false; this.menuOpen = false;
     this.edit = null; // { id, error }
     this.confirm = null; // { kind: "task" | "list", id, text, ids? }
@@ -52,7 +52,8 @@ export default class Tasks extends View {
     this.dueInput.on("submit", (_e, cx) => { this.save(cx); cx.notify(); });
 
     cx.timer.every(REFRESH_MS, cx => {
-      if (this.visible() && this.screen === "list" && this.idle()) { this.enqueue(this.refreshJob(), cx); cx.notify(); }
+      const retryLoad = this.screen === "loading" && this.error;
+      if (this.visible() && (this.screen === "list" || retryLoad) && this.idle()) { this.requestRefresh(cx); cx.notify(); }
     });
   }
 
@@ -69,13 +70,7 @@ export default class Tasks extends View {
 
   // Runs the helper. Never throws: { ok: true, data } or { ok: false, error }.
   async call(args, timeout) {
-    if (!this.script) {
-      let r;
-      try { r = await exec("node", ["-e", APP_DIR_SCRIPT]); }
-      catch (e) { return { ok: false, error: execError(e) }; }
-      if (r.code !== 0 || !r.stdout.trim()) return { ok: false, error: { kind: "no-node", message: r.stderr } };
-      this.script = helperPath(r.stdout.trim());
-    }
+    if (!this.script) this.script = helperPath(appHome());
     try {
       const r = await exec("node", [this.script, ...args], timeout ? { timeout } : {});
       return parseOutput(r.stdout, r.stderr);
@@ -86,7 +81,14 @@ export default class Tasks extends View {
     return { refresh: "all" };
   }
 
-  // A job: { run?() → result, before?(), undo?(), done?(data), mark?: task id, refresh?: "all" | "tasks" }.
+  // A refresh unless one is already running or waiting.
+  requestRefresh(cx) {
+    const only = j => j && !j.run && j.refresh === "all";
+    if (only(this.running) || this.queue.some(only)) return;
+    this.enqueue(this.refreshJob(), cx);
+  }
+
+  // A job: { run?() → result, before?(), reapply?(), list?, undo?(), done?(data), mark?: task id, refresh?: "all" | "tasks" }.
   enqueue(job, cx) {
     job.before?.();
     this.queue.push(job);
@@ -111,7 +113,8 @@ export default class Tasks extends View {
       }
       if (job.mark) this.busy.delete(job.mark);
       this.running = null;
-      if (error) this.fail(error, retry); else this.error = null;
+      if (error) this.fail(error, retry);
+      else if (this.error && this.error.job === job) this.error = null; // a retry that worked
       cx.notify();
       this.pump(cx);
     });
@@ -137,19 +140,23 @@ export default class Tasks extends View {
 
   async fetchTasks() {
     const listId = this.listId;
-    if (!listId) { this.setTasks([]); this.screen = "list"; return null; }
+    if (!listId) { this.setTasks([]); this.loadedList = null; this.screen = "list"; return null; }
     const t = await this.call(command("tasks", [listId]));
     if (listId !== this.listId) return null;
     if (!t.ok) return t.error;
     this.setTasks(t.data);
+    this.loadedList = listId;
+    // Ticks still waiting or in flight were not in what Google just sent: put them back.
+    for (const j of [this.running, ...this.queue]) if (j?.reapply && j.list === listId) j.reapply();
     this.screen = "list";
     return null;
   }
 
   choose(id) {
     this.listId = id;
-    if (id) localStorage.setItem("list", id); else localStorage.removeItem("list");
+    if (id) localStorage.setItem("my-tasks.list", id); else localStorage.removeItem("my-tasks.list");
     this.edit = null; this.confirm = null; this.showDone = false;
+    this.loadedList = null;
     this.setTasks([]);
   }
 
@@ -157,8 +164,15 @@ export default class Tasks extends View {
     this.tasks = list;
     this.tree = buildTree(list);
     const has = id => list.some(t => t.id === id);
-    if (this.edit && !has(this.edit.id)) this.edit = null;
+    const finished = id => list.some(t => t.id === id && t.status === "completed");
+    if (this.edit && (!has(this.edit.id) || finished(this.edit.id))) this.edit = null;
     if (this.confirm?.kind === "task" && !has(this.confirm.id)) this.confirm = null;
+  }
+
+  // A delete question about a task that is no longer on screen would block refreshes unseen.
+  dropDoneConfirm() {
+    const c = this.confirm;
+    if (c?.kind === "task" && this.tasks.some(t => t.id === c.id && t.status === "completed")) this.confirm = null;
   }
 
   login(cx) {
@@ -169,7 +183,7 @@ export default class Tasks extends View {
       const r = await this.call(command("login"), LOGIN_TIMEOUT_MS);
       if (this.waiting !== attempt) return; // cancelled
       this.waiting = null;
-      if (r.ok) { this.screen = "loading"; this.enqueue(this.refreshJob(), cx); }
+      if (r.ok) { this.screen = "loading"; this.requestRefresh(cx); }
       else {
         const e = errorText(r.error);
         this.loginInfo = e.screen === "login" ? e : { ...this.loginInfo, text: e.text, detail: null };
@@ -182,7 +196,10 @@ export default class Tasks extends View {
     this.menuOpen = false;
     this.enqueue({
       run: () => this.call(command("logout")),
-      done: () => { this.screen = "login"; this.loginInfo = errorText({ kind: "no-login" }); this.lists = []; this.setTasks([]); },
+      done: () => {
+        this.screen = "login"; this.loginInfo = errorText({ kind: "no-login" }); this.lists = []; this.setTasks([]);
+        this.naming = null; this.confirm = null; this.edit = null; this.pickOpen = false; this.menuOpen = false; this.showDone = false; this.error = null;
+      },
     }, cx);
   }
 
@@ -225,9 +242,10 @@ export default class Tasks extends View {
       const x = this.tasks.find(t => t.id === task.id);
       if (x) { Object.assign(x, values); this.setTasks(this.tasks); }
     };
+    const apply = () => set(finish ? { status: "completed", completed: new Date().toISOString() } : { status: "needsAction", completed: null });
     this.enqueue({
-      mark: task.id,
-      before: () => set(finish ? { status: "completed", completed: new Date().toISOString() } : { status: "needsAction", completed: null }),
+      mark: task.id, list,
+      before: apply, reapply: apply,
       undo: () => set(before),
       run: () => this.call(command(finish ? "done" : "undone", [list, task.id])),
     }, cx);
@@ -267,7 +285,9 @@ export default class Tasks extends View {
     this.enqueue({
       mark: c.id, refresh: "tasks",
       run: async () => {
-        for (const id of c.ids.filter(id => this.tasks.some(t => t.id === id))) {
+        // After a list switch this.tasks is another list's: delete them all rather than filter.
+        const ids = this.listId !== list ? c.ids : c.ids.filter(id => this.tasks.some(t => t.id === id));
+        for (const id of ids) {
           const r = await this.call(command("delete", [list, id]));
           if (!r.ok) return r;
         }
@@ -282,6 +302,7 @@ export default class Tasks extends View {
     this.enqueue({
       mark: task.id, refresh: "tasks",
       run: async () => {
+        if (this.listId !== list) return { ok: false, error: { kind: "api", message: "목록이 바뀌어서 옮기지 않았어요" } };
         const args = moveArgs(this.tree, task.id, dir);
         return args ? this.call(command("move", [list, task.id], args)) : { ok: true };
       },
@@ -313,7 +334,7 @@ export default class Tasks extends View {
       .child(div().flex_1().min_w(0).truncate().text_right().text_size(12).text_color(t.dim)
         .child(this.running || this.queue.length ? "동기화 중…" : ""))
       .child(div().id("tasks-refresh").w(20).cursor_pointer().text_color(t.muted)
-        .on_click((_e, cx) => { if (!this.waiting) this.enqueue(this.refreshJob(), cx); cx.notify(); }).child("⟳"));
+        .on_click((_e, cx) => { this.error = null; if (!this.waiting) this.requestRefresh(cx); cx.notify(); }).child("⟳"));
   }
 
   loginView(t, button) {
@@ -328,7 +349,7 @@ export default class Tasks extends View {
           .child(div().text_size(12).child("브라우저에서 허용해 주세요…"))
           .child(button("tasks-login-cancel", "취소", () => { this.waiting = null; }))
         : h_flex().child(noClient
-          ? button("tasks-recheck", "다시 확인", cx => this.enqueue(this.refreshJob(), cx))
+          ? button("tasks-recheck", "다시 확인", cx => this.requestRefresh(cx))
           : button("tasks-login", "로그인", cx => this.login(cx))));
   }
 
@@ -352,7 +373,7 @@ export default class Tasks extends View {
     if (this.menuOpen) out.push(h_flex().flex_none().px(10).py(6).gap(6).flex_wrap().border_b(1).border_color(t.border)
       .when(Boolean(current), el => el
         .child(button("tasks-list-rename", "목록 이름 바꾸기", () => this.startNaming("rename")))
-        .child(button("tasks-list-delete", "목록 삭제", () => this.askDeleteList())))
+        .when(this.loadedList === this.listId, el => el.child(button("tasks-list-delete", "목록 삭제", () => this.askDeleteList()))))
       .child(button("tasks-logout", "로그아웃", cx => this.logout(cx))));
     if (this.naming) out.push(h_flex().h(38).flex_none().px(10).gap(6).items_center().border_b(1).border_color(t.border)
       .child(div().flex_none().text_size(12).text_color(t.dim).child(this.naming.mode === "new" ? "새 목록" : "이름"))
@@ -387,7 +408,7 @@ export default class Tasks extends View {
     const empty = roots.length ? [] : [note(done.length ? "남은 할 일이 없어요." : "할 일이 없어요.")];
     const doneRows = !done.length ? [] : [
       h_flex().id("tasks-done-toggle").h(28).px(8).mt(6).items_center().rounded(6).cursor_pointer().text_size(12).text_color(t.muted)
-        .hover(s => s.bg(t.hover)).on_click((_e, cx) => { this.showDone = !this.showDone; cx.notify(); })
+        .hover(s => s.bg(t.hover)).on_click((_e, cx) => { this.showDone = !this.showDone; if (!this.showDone) this.dropDoneConfirm(); cx.notify(); })
         .child(`${this.showDone ? "▾" : "▸"} 완료됨 (${done.length})`),
       ...(this.showDone ? done.map(d => this.row(d, 0, t, button, icon)) : []),
     ];
@@ -428,12 +449,13 @@ export default class Tasks extends View {
         .when(busy, el => el.child(div().flex_none().text_color(t.dim).child("…")))
         .children(tools)
         .when(!hovered && !busy && Boolean(due), el => el.child(div().flex_none().text_size(11).text_color(due.overdue ? t.ansi1 : t.dim).child(due.text))))
-      .when(Boolean(preview), el => el.child(div().pl(24).text_size(11).text_color(t.dim).truncate().child(preview)));
+      .when(Boolean(preview), el => el.child(div().id(`task-notes-${id}`).pl(24).text_size(11).text_color(t.dim).truncate().cursor_pointer()
+        .on_click((_e, cx) => { this.openEdit(task); cx.notify(); }).child(preview)));
   }
 
   render(cx) {
     const shown = this.visible();
-    if (shown && !this.wasShown && !this.waiting) this.enqueue(this.refreshJob(), cx);
+    if (shown && !this.wasShown && !this.waiting) this.requestRefresh(cx);
     this.wasShown = shown;
     const t = theme();
     const button = (id, label, onClick) => h_flex().id(id).h(24).px(8).flex_none().items_center().rounded(6).cursor_pointer()

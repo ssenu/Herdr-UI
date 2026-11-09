@@ -230,10 +230,11 @@ mod는 덮어씁니다. 레이아웃은 백업한 뒤 빠진 칸만 추가하므
 
 ## 제거
 
-1. 백업(`layouts\my-layout.json.bak-<시각>`)을 `my-layout.json` 으로 되돌리거나, 위 여섯 가지를 원래대로(`files`, `tabs`, `workspace-status`, github·plugins·sessions·tasks 칸 삭제) 고칩니다.
-2. `~\.config\herdr-app\mods\` 에서 `my-files`, `my-files-drag`, `my-files-open`, `my-github`, `my-new-menu`, `my-plugins`, `my-sessions`, `my-status`, `my-status-dash`, `my-tab-drag`, `my-tabs`, `my-tasks`, `my-usage-dash`, `my-viewer` 폴더를 지웁니다.
-3. 뷰어 초안까지 지우려면 `~\.config\herdr-app\data\my-viewer\` 를 지웁니다.
-4. Task 패널의 연결까지 지우려면 패널에서 로그아웃한 뒤 `~\.config\herdr-app\my-tasks` 를 지웁니다.
+1. Task 패널을 썼다면 먼저 패널의 [⋯] → 로그아웃으로 연결을 끊습니다(또는 https://myaccount.google.com/permissions 에서 앱 접근을 삭제).
+2. 백업(`layouts\my-layout.json.bak-<시각>`)을 `my-layout.json` 으로 되돌리거나, 위 일곱 가지를 원래대로(`files`, `tabs`, `workspace-status`, github·plugins·sessions·tasks 칸 삭제) 고칩니다.
+3. `~\.config\herdr-app\mods\` 에서 `my-files`, `my-files-drag`, `my-files-open`, `my-github`, `my-new-menu`, `my-plugins`, `my-sessions`, `my-status`, `my-status-dash`, `my-tab-drag`, `my-tabs`, `my-tasks`, `my-usage-dash`, `my-viewer` 폴더를 지웁니다.
+4. 뷰어 초안까지 지우려면 `~\.config\herdr-app\data\my-viewer\` 를 지웁니다.
+5. Task 패널의 설정과 토큰 폴더 `~\.config\herdr-app\my-tasks\` 를 지웁니다.
 
 ## 알려진 한계
 
@@ -249,7 +250,7 @@ mod는 덮어씁니다. 레이아웃은 백업한 뒤 빠진 칸만 추가하므
 - 파일 뷰어는 이미지·PDF를 탭에서 보여 주지 않습니다(외부 프로그램으로 엽니다). 탭을 닫을 때 묻지 않는 대신 초안을 복원합니다. 초안은 그 PC에만 남습니다. 1 MiB가 넘는 파일은 읽지 못합니다. 탭 바에 드롭하기 전까지 마우스가 탭 바 위를 한 번도 지나지 않았으면 창 맨 위 40px을 탭 바로 칩니다.
 - 탭 끌어 분할하기는 한 칸짜리 터미널·에이전트 탭과 파일을 연 뷰어 탭만 옮깁니다. 지금 보고 있는 탭과 원격 탭, 하위 에이전트가 있는 에이전트 탭은 옮기지 않습니다. 같은 파일을 두 뷰어로 열면 각자 수정 내용을 따로 가지고 초안은 하나를 같이 쓰므로, 마지막에 쓴 쪽이 남습니다. 뷰어를 옮기면 실행 취소 기록과 스크롤 위치는 처음으로 돌아갑니다. 이미 나뉜 화면에서는 포커스된 칸이 나뉩니다. 분할 칸의 뷰어는 탭 이름에 `●` 가 없고, 같은 파일을 다시 드롭하면 새 탭이 열립니다. 같은 터미널을 탭과 분할 칸에 동시에 띄울 수는 없어서, 탭 대신 칩이 남습니다. 칩은 끌 수 없고 우클릭 메뉴가 없으며, 탭으로 빼면 탭 바 끝에 생깁니다. 탭의 `×` 는 칩의 칸까지 탭 전체를 닫습니다. 왼쪽과 위쪽은 이웃한 칸과 자리를 바꾸는 방식이라, 이미 나뉜 화면에서는 그 칸의 배치에 따라 결과가 달라질 수 있습니다. 레이아웃의 터미널 블록에 포커스가 있으면 "분할할 칸을 먼저 눌러 주세요"라는 안내가 뜨고 탭은 그대로 남습니다.
 - 시스템 모니터는 Windows에서만, 항상 이 PC의 값을 보여 줍니다. 5초마다 PowerShell을 한 번 실행합니다. 그래프는 메모리에만 있어 앱을 끄면 사라집니다. GPU 값은 작업 관리자와 조금 다를 수 있습니다.
-- Task 패널은 Google Tasks만 다룹니다(Google Keep 없음). 마감 시각, 반복, 하위의 하위는 Google Tasks API에 없어서 다루지 않습니다. 순서는 끌기 대신 버튼으로 바꿉니다. 할 일이 많은 목록은 읽을 때 100개마다 요청이 하나씩 늘어납니다.
+- Task 패널은 Google Tasks만 다룹니다(Google Keep 없음). 마감 시각, 반복, 하위의 하위는 Google Tasks API에 없어서 다루지 않습니다. 할 일을 완료해도 그 하위 할 일은 완료되지 않습니다(Google Tasks API 동작). 남은 하위는 맨 위 단계로 보이고 ⇤ 로 정리할 수 있습니다. 순서는 끌기 대신 버튼으로 바꿉니다. 할 일이 많은 목록은 읽을 때 100개마다 요청이 하나씩 늘어납니다.
 
 ## 개발
 
