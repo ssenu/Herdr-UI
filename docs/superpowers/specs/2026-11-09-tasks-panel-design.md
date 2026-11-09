@@ -53,8 +53,8 @@
 
 - 준비(README에 안내, 사용자가 한 번): Google Cloud 프로젝트에서 Tasks API 켜기 → OAuth 동의 화면(외부, 게시 상태 "프로덕션") → OAuth 클라이언트 "데스크톱 앱" 만들어 JSON을 `~/.config/herdr-app/my-tasks/client.json`에 저장.
 - 로그인 전 화면: "Google 계정 연결이 필요해요", 준비 3단계 요약, `[로그인]`. 클라이언트 파일이 없으면(`no-client`) 그 경로를 보여 주고 `[로그인]` 대신 `[다시 확인]`.
-- `[로그인]` → `node tasks.mjs login`. 이 명령은 로그인을 기다리는 자식 프로세스를 분리해 띄우고(`detached`, `unref`) 열 주소를 바로 돌려준다. 자식은 `127.0.0.1`의 임의 포트에서 응답을 기다리고(PKCE, `state` 확인), 코드를 토큰으로 바꿔 `token.json`에 쓰고 끝난다. 300초가 지나면 그냥 끝난다. 브라우저 창에는 "연결됐어요. 이 창을 닫아도 돼요" 또는 실패 이유를 보여 준다.
-- mod는 받은 주소를 브라우저로 열고, 2000 ms마다 `status`를 확인한다(최대 300초). 로그인되면 목록을 읽는다. 기다리는 동안 화면은 "브라우저에서 허용해 주세요… [취소]".
+- `[로그인]` → `node tasks.mjs login`을 `exec`의 `timeout: 310000`으로 실행한다(`exec`는 최대 600000 ms까지 기다릴 수 있으므로 분리된 자식 프로세스가 필요 없다). 이 명령은 `127.0.0.1`의 임의 포트에서 응답을 기다리며(PKCE, `state` 확인), 브라우저를 스스로 연다(Windows `rundll32 url.dll,FileProtocolHandler`, macOS `open`, Linux `xdg-open`). 코드를 토큰으로 바꿔 `token.json`에 쓰고 `{"ok":true}`를 낸 뒤 끝난다. 300초가 지나면 오류로 끝난다. 브라우저 창에는 "연결됐어요. 이 창을 닫아도 돼요" 또는 실패 이유를 보여 준다.
+- 기다리는 동안 화면은 "브라우저에서 허용해 주세요… [취소]". `[취소]`는 결과를 버릴 뿐이다(보조 스크립트는 300초 뒤 스스로 끝난다). 성공하면 목록을 읽는다.
 - `logout`: Google에 토큰 취소 요청을 보내고(실패해도 진행) `token.json`을 지운다.
 - 파일은 모두 `~/.config/herdr-app/my-tasks/`(`client.json`, `token.json`). 저장소에는 들어가지 않는다.
 
@@ -74,6 +74,8 @@
 - `tasks`: `showCompleted=true`, `showHidden=true`, `maxResults=100`, 페이지를 끝까지 읽는다. 돌려주는 필드: `id`, `title`, `notes`, `due`, `status`, `completed`, `parent`, `position`.
 - `update`의 `<json>`은 `{title?, notes?, due?}`. `due`는 `YYYY-MM-DD` 또는 `null`. API에는 `YYYY-MM-DDT00:00:00.000Z`로 보낸다.
 - `done`은 `status: "completed"`, `undone`은 `status: "needsAction", completed: null`로 patch.
+- mod는 스크립트 경로를 처음 한 번 `node -e`로 앱 폴더(`HERDR_APP_HOME`, 없으면 `~/.config/herdr-app`)를 물어 `<앱 폴더>/mods/my-tasks/tasks.mjs`로 정한다. 스크립트는 자기 위치에서 `../../my-tasks/`를 설정 폴더로 쓴다(설치본이면 `<앱 폴더>/my-tasks/`).
+- 자유 문자열(제목, json)은 `--` 뒤에 둔다. 플래그는 `--` 앞에만 온다.
 - mod는 항상 이 PC에서 실행한다(`on`을 주지 않는다). 할 일은 계정의 것이라 스페이스의 머신과 상관없다.
 
 파일 나누기:
