@@ -109,7 +109,7 @@ async function collect({ cwd, on }, agent) {
 export default class Plugins extends View {
   init(_props, cx) {
     this.tab = "mcp"; this.pick = null; // pick: { address, agent } chosen with the chips
-    this.data = null; this.error = null; this.loading = false; this.again = false;
+    this.data = null; this.error = null; this.loading = false; this.manual = false; this.again = false;
     this.detail = null; this.context = null; this.wasShown = this.visible();
     if (this.visible()) this.refresh(cx);
   }
@@ -139,7 +139,7 @@ export default class Plugins extends View {
     if (next !== this.context?.key) {
       const loc = location();
       this.context = { key: next, cwd: loc.cwd, on: loc.on, agent: this.agent() };
-      this.data = null; this.error = null; this.detail = null; this.loading = false; this.again = false;
+      this.data = null; this.error = null; this.detail = null; this.loading = false; this.manual = false; this.again = false;
     }
     if (!this.context.cwd) return;
     if (this.loading) { this.again = true; return; }
@@ -153,7 +153,7 @@ export default class Plugins extends View {
         if (this.context === context) this.error = String(e?.message ?? e);
       } finally {
         if (this.context === context) {
-          this.loading = false;
+          this.loading = false; this.manual = false;
           if (this.again) { this.again = false; this.refresh(cx); }
         }
         cx.notify();
@@ -202,7 +202,7 @@ export default class Plugins extends View {
     const showError = Boolean(c?.cwd && this.error);
     const where = c?.cwd ? (c.on ? `${c.on}:${base(c.cwd)}` : base(c.cwd)) : "";
     return [
-      header(t, { id: "plugins", title: "Plugins", loading: this.loading, refresh: cx => this.refresh(cx),
+      header(t, { id: "plugins", title: "Plugins", loading: this.manual && this.loading, refresh: cx => { this.manual = true; this.refresh(cx); },
         right: [chip(t, "pl-agent-claude", "Claude", agent === "claude", cx => this.choose("claude", cx)),
           chip(t, "pl-agent-codex", "Codex", agent === "codex", cx => this.choose("codex", cx))] }),
       toolbar(t)

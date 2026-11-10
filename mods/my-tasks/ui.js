@@ -15,11 +15,11 @@ export function panel(t, id) {
     .text_color(t.foreground).text_size(TEXT.base);
 }
 
-/** A toggle chip, filled when on. Clicking the chip that is on does nothing. */
-export function chip(t, id, label, on, onClick) {
+/** A toggle chip, filled when on. Clicking the chip that is on does nothing, unless `toggle` (it can switch itself off). */
+export function chip(t, id, label, on, onClick, { toggle = false } = {}) {
   return h_flex().id(id).h(24).px(9).flex_none().items_center().rounded(6).cursor_pointer().text_size(TEXT.body)
     .bg(on ? t.selected : t.background).text_color(on ? t.foreground : t.muted)
-    .hover(s => s.bg(t.hover)).on_click((_e, cx) => { if (!on) fire(onClick, cx); }).child(label);
+    .hover(s => s.bg(t.hover)).on_click((_e, cx) => { if (!on || toggle) fire(onClick, cx); }).child(label);
 }
 
 /** A bordered text button. `danger` for delete / merge / close confirmations. */
@@ -79,8 +79,8 @@ export function confirmBox(t, id, text, { confirm, onConfirm, onCancel, danger =
 }
 
 /** A small menu: items { id, label, onClick, enabled = true, danger = false }, then an optional dim note. */
-export function menu(t, id, items, note = null) {
-  return v_flex().id(id).w(148).p(4).gap(1).rounded(7).border_1().border_color(t.border).bg(t.background)
+export function menu(t, id, items, note = null, { width = 148 } = {}) {
+  return v_flex().id(id).w(width).p(4).gap(1).rounded(7).border_1().border_color(t.border).bg(t.background)
     .children(items.map(it => {
       const enabled = it.enabled !== false;
       const el = div().id(it.id).h(ROW_H).px(10).flex().items_center().rounded(5).text_size(TEXT.body)

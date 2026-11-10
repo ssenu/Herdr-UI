@@ -159,12 +159,12 @@ export default class GitHub extends View {
       try { r = await ghRun(actionArgs(act.kind, act.number, act.method), context); }
       catch { r = { ok: false, error: { kind: "other", message: "명령을 만들지 못했어요" } }; }
       if (r.ok) {
-        notify({ title: act.kind === "pr" ? `PR #${act.number}을 머지했어요` : `이슈 #${act.number}을 닫았어요`, level: "info", timeout: 3000 });
+        notify({ title: act.kind === "pr" ? `#${act.number} PR을 머지했어요` : `#${act.number} 이슈를 닫았어요`, level: "info", timeout: 3000 });
         if (this.act === act) this.act = null;
       } else if (this.act === act) {
         act.step = "failed"; act.error = r.error;
       } else {
-        notify({ title: act.kind === "pr" ? `PR #${act.number}을 머지하지 못했어요` : `이슈 #${act.number}를 닫지 못했어요`, body: r.error.message, level: "error", timeout: 5000 });
+        notify({ title: act.kind === "pr" ? `#${act.number} PR을 머지하지 못했어요` : `#${act.number} 이슈를 닫지 못했어요`, body: r.error.message, level: "error", timeout: 5000 });
       }
       // Either way, read the item and the list again: even a failure may have gone through (a timeout),
       // and an item that is no longer open loses its buttons.

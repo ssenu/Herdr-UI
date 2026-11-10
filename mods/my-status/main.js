@@ -134,14 +134,14 @@ export default class MyStatus extends View {
   async close() { this.hovered = false; this.hoverSeq++; this.closeDash(); this.usageHovered = false; this.usageSeq++; this.closeUsage(); }
 
   // The palette key as actually bound, not a hardcoded one; without a
-  // binding the hint stays useful ("명령") instead of lying.
+  // binding the hint stays useful ("명령 팔레트") instead of lying.
   hint(t) {
     const mac = window()?.platform === "macos";
     const mod = { cmd: mac ? "⌘" : "Ctrl+", ctrl: mac ? "⌃" : "Ctrl+", shift: mac ? "⇧" : "Shift+", alt: mac ? "⌥" : "Alt+", option: mac ? "⌥" : "Alt+" };
     const b = keys().find((k) => k.section === "global" && k.action === "app.palette");
     const parts = b && b.keys.endsWith("--") ? [...b.keys.slice(0, -2).split("-"), "-"] : b?.keys.split("-");
     const key = parts && parts.map((p) => mod[p.toLowerCase()] ?? p.toUpperCase()).join("");
-    return key ? `${key}  명령` : "명령";
+    return key ? `${key}  명령 팔레트` : "명령 팔레트";
   }
 
   render() {

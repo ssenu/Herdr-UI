@@ -44,7 +44,7 @@ async function collect({ cwd, on }) {
 export default class Sessions extends View {
   init(_props, cx) {
     this.scope = "all"; this.context = null; this.data = null; this.error = null;
-    this.loading = false; this.again = false; this.wasShown = this.visible();
+    this.loading = false; this.manual = false; this.again = false; this.wasShown = this.visible();
     this.act = null; // the ⋯ box: { id, dir, title, step: "menu" | "rename" | "color" | "confirm" | "running" | "failed", kind, error }
     this.nameInput = InputState.new({ placeholder: "세션 이름" });
     this.nameInput.on("submit", (_e, cx) => { this.runAct("rename", cx); cx.notify(); });
@@ -68,7 +68,7 @@ export default class Sessions extends View {
         && this.data.worktrees.some(w => isUnder(loc.cwd, w)));
       this.context = { key: next, cwd: loc.cwd, on: loc.on };
       if (!keep) { this.data = null; if (this.act?.step !== "running") this.act = null; }
-      this.error = null; this.loading = false; this.again = false;
+      this.error = null; this.loading = false; this.manual = false; this.again = false;
     }
     if (!this.context.cwd) return;
     if (this.loading) { this.again = true; return; }
@@ -85,7 +85,7 @@ export default class Sessions extends View {
         if (this.context === context) this.error = String(e?.message ?? e);
       } finally {
         if (this.context === context) {
-          this.loading = false;
+          this.loading = false; this.manual = false;
           if (this.again) { this.again = false; this.refresh(cx); }
         }
         cx.notify();
@@ -160,7 +160,7 @@ export default class Sessions extends View {
           { id: "session-rename", label: "수정", enabled: !live, onClick: () => this.startRename() },
           { id: "session-color", label: "색상", enabled: !live, onClick: () => { a.step = "color"; } },
           { id: "session-delete", label: "삭제", enabled: !live, onClick: () => { a.step = "confirm"; } },
-        ], live ? "열려 있는 세션은 Claude에서 /rename, /color로 바꿔 주세요" : null))];
+        ], live ? "열려 있는 세션은 Claude에서 /rename, /color로 바꿔 주세요" : null, live ? { width: 220 } : undefined))];
     }
     if (a.step === "color") {
       const current = s.color ?? "default";
@@ -171,15 +171,19 @@ export default class Sessions extends View {
           .children(COLORS.map(color => div().id(`session-color-${color}`).w(16).h(16).flex_none().rounded(8).cursor_pointer()
             .bg(HEX[color]).border_2().border_color(ring(color === current))
             .on_click((_e, cx) => { const go = pick(color); if (go) go(cx); cx.notify(); })))
-          .child(div().rounded(8).border_2().border_color(ring(current === "default"))
-            .child(button(t, "session-color-default", "기본", cx => { const go = pick("default"); if (go) go(cx); }))))];
+          .child((() => {
+            const def = button(t, "session-color-default", "기본", cx => { const go = pick("default"); if (go) go(cx); });
+            return current === "default" ? def.border_color(t.foreground) : def;
+          })()))];
     }
     const id = `session-act-${s.id}`;
     if (a.step === "confirm") return [confirmBox(t, id, deleteConfirmText(a.title, Boolean(this.context?.on) || window()?.platform !== "windows"),
       { confirm: "삭제", onConfirm: cx => this.runAct("delete", cx), onCancel: close }).mx(8).mb(4)];
     if (a.step === "running") return [h_flex().id(id).flex_none().mx(8).mb(4).px(8).py(6).gap(6).items_center().rounded(7).bg(t.hover).text_size(12)
       .child(div().text_color(t.dim).child(a.kind === "color" ? "색 바꾸는 중…" : "지우는 중…"))];
-    return [errorLine(t, id, a.error, { close }).mx(8).mb(4)];
+    return [h_flex().id(id).flex_none().mx(8).mb(4).px(8).py(6).gap(6).items_center().flex_wrap().rounded(7).bg(t.hover).text_size(12)
+      .child(div().flex_1().min_w(0).text_color(t.ansi1).child(`⚠ ${a.error}`))
+      .child(button(t, `${id}-close`, "닫기", close))];
   }
 
   renaming(s) {
@@ -211,12 +215,12 @@ export default class Sessions extends View {
     const where = name ? (c?.on ? `${c.on}:${base(name)}` : base(name)) : "";
     const message = !c?.cwd ? "폴더가 없어요" : !d ? (this.error ? null : "불러오는 중…") : emptyText(this.scope);
     return panel(t, "sessions")
-      .child(header(t, { id: "sessions", title: "Sessions", status: where, refresh: cx => this.refresh(cx), loading: this.loading }))
+      .child(header(t, { id: "sessions", title: "Sessions", status: where, refresh: cx => { this.manual = true; this.refresh(cx); }, loading: this.manual && this.loading }))
       .child(toolbar(t)
         .child(chip(t, "sessions-all", "전체", this.scope === "all", () => { this.scope = "all"; }))
         .child(chip(t, "sessions-here", "지금 폴더", this.scope === "here", () => { this.scope = "here"; })))
+      .when(Boolean(this.error), el => el.child(errorLine(t, "sessions-error", this.error, { retry: cx => this.refresh(cx), close: d ? () => { this.error = null; } : null })))
       .child(v_flex().id("sessions-list").flex_1().min_h(0).overflow_y_scrollbar().p(6)
-        .when(Boolean(this.error), el => el.child(errorLine(t, "sessions-error", this.error, { retry: cx => this.refresh(cx), close: () => { this.error = null; } })))
         .children(picked.items.flatMap(s => {
           const live = d.live.has(s.id.toLowerCase());
           return [v_flex().id(`session-${s.id}`).flex_none().px(8).py(6).gap(3).rounded(7).cursor_pointer().hover(st => st.bg(t.hover)).relative()

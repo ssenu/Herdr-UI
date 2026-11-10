@@ -400,7 +400,7 @@ export default class Tasks extends View {
       .child(div().font_semibold().child(info.text))
       .when(Boolean(info.detail), el => el.child(div().text_size(12).text_color(t.dim).child(info.detail)))
       .children(SETUP.map(line => div().text_size(12).text_color(t.muted).child(line)))
-      .child(div().text_size(12).text_color(t.dim).child("자세한 방법은 README의 Task 패널 절을 보세요."))
+      .child(div().text_size(12).text_color(t.dim).child("자세한 방법은 README의 Tasks 패널 절을 보세요."))
       .child(h_flex().gap(8).items_center()
         .children(this.waiting
           ? [div().text_size(12).child("브라우저에서 허용해 주세요…"), button(t, "tasks-login-cancel", "취소", () => { this.waiting = null; })]
@@ -460,7 +460,7 @@ export default class Tasks extends View {
     if (!this.listId) return list.child(note(t, "목록이 없어요. [+]로 만들어 보세요."));
     const { roots, done } = this.tree;
     const rows = roots.flatMap(r => [this.row(r, 0, t), ...r.children.map(c => this.row(c, 1, t))]);
-    const empty = roots.length || this.adding ? [] : [note(done.length ? "남은 할 일이 없어요." : "할 일이 없어요.")];
+    const empty = roots.length || this.adding ? [] : [note(t, done.length ? "남은 할 일이 없어요." : "할 일이 없어요.")];
     const add = this.adding
       ? v_flex().id("tasks-add-form").flex_none().mt(4).px(8).py(6).gap(6).rounded(7).bg(t.hover)
         .on_key_down(onEscape(() => this.closeAdd()))

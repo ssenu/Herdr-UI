@@ -27,8 +27,8 @@ const key = () => JSON.stringify(location());
 const LANG = { ts: "js", tsx: "js", mts: "js", cts: "js", jsx: "js", mjs: "js", toml: "yaml", jsonc: "json", svelte: "html", vue: "html" };
 const PER_FOLDER = 500, TOTAL = 5000;
 const MAX_INDEXES = 4, RESULT_LIMIT = 200, REMOTE_INDEX_MS = 60000;
-const GONE = "이 파일은 더 이상 없어요";
-const UNREADABLE = "미리볼 수 없는 파일이에요 (바이너리이거나 너무 크거나 읽을 수 없어요)";
+const GONE = "이 파일을 찾을 수 없어요";
+const UNREADABLE = "미리 볼 수 없는 파일이에요 (바이너리이거나 너무 크거나 읽을 수 없어요)";
 
 async function directory(path, on) {
   if (!on && window()?.platform === "windows") {
@@ -138,13 +138,14 @@ export default class Files extends View {
       this.context = { key: next, cwd, on }; this.root = cwd; this.on = on; this.entries = new Map(); this.folders = new Set(saved?.folders);
       this.buffers = saved?.buffers ?? new Map();
       this.pending = new Set(); this.marks = {}; this.show(null); this.watched = null; this.error = null; this.limited = false;
-      this.loading = false;
+      this.loading = false; this.manual = false;
       const known = this.indexes.get(next);
       if (known && !on) known.stale = true;
       if (saved?.file) this.show(saved.file, cx);
       this.ensureIndex(cx);
     }
-    if (!cwd || this.loading) return;
+    if (!cwd) { this.manual = false; return; }
+    if (this.loading) return;
     const context = this.context;
     this.loading = true;
     this.limited = false;
@@ -169,7 +170,7 @@ export default class Files extends View {
         if (!this.current(context)) return;
         this.marks = marks; this.error = null; this.watch(cwd, cx);
       } catch (e) { if (this.current(context)) this.error = String(e); }
-      finally { if (this.context === context) this.loading = false; cx.notify(); }
+      finally { if (this.context === context) { this.loading = false; this.manual = false; } cx.notify(); }
     });
   }
 
@@ -224,7 +225,7 @@ export default class Files extends View {
         const text = await readTextFile(`${root}/${path}`, { on });
         if (this.file !== path || !this.current(context) || this.buffers.has(path)) return;
         if (text === null) { this.fileError = GONE; return; }
-        if (text.includes("\0")) { this.fileError = "바이너리 파일이라 미리볼 수 없어요"; return; }
+        if (text.includes("\0")) { this.fileError = "바이너리 파일이라 미리 볼 수 없어요"; return; }
         this.buffers.set(path, this.makeBuffer(path, text));
       } catch { if (this.file === path && this.current(context)) this.fileError = UNREADABLE; }
       finally { cx.notify(); }
@@ -462,14 +463,15 @@ export default class Files extends View {
   foundView(t) {
     const index = this.index(), found = this.results(), q = this.query.trim();
     if (found && this.at >= found.results.length) this.at = Math.max(0, found.results.length - 1);
-    return v_flex().id("files-found").flex_1().min_h(0).overflow_y_scrollbar().p(6)
+    return v_flex().id("files-found-wrap").flex_1().min_h(0)
       .when(Boolean(index?.error), el => el.child(errorLine(t, "files-index-error", `파일 목록을 만들지 못했어요: ${index.error}`, { retry: cx => this.ensureIndex(cx) })))
+      .child(v_flex().id("files-found").flex_1().min_h(0).overflow_y_scrollbar().p(6)
       .when(Boolean(index?.truncated), el => el.child(note(t, "파일이 너무 많아 처음 50,000개에서만 찾아요")))
       .children(found ? found.results.map((r, i) => this.resultRow(r, i, t)) : [])
       .when(Boolean(found?.more), el => el.child(note(t, "더 있어요 · 검색어를 더 입력하세요")))
       .when(Boolean(found) && found.results.length === 0, el => el.child(note(t, `‘${q}’와 맞는 파일이 없어요`)))
       .when(!found && !index?.error && !this.context?.cwd, el => el.child(note(t, "폴더가 없어요")))
-      .when(!found && !index?.error && Boolean(this.context?.cwd) && Boolean(index?.building), el => el.child(note(t, "목록 만드는 중…")));
+      .when(!found && !index?.error && Boolean(this.context?.cwd) && Boolean(index?.building), el => el.child(note(t, "목록 만드는 중…"))));
   }
 
   render(cx) {
@@ -487,9 +489,9 @@ export default class Files extends View {
       .child(header(t, {
         id: "files", title: "Files",
         back: file ? cx => { this.show(null); if (this.query.trim()) this.search.focus(); } : null,
-        status: file ? (buf?.dirty ? `● ${file}` : file) : this.root?.split(/[\/]/).pop() ?? "",
-        right: !file && this.desktop ? [chip(t, "files-desktop", "바탕화면", pinned === this.desktop, cx => this.toggleDesktop(cx))] : [],
-        refresh: cx => this.refresh(cx), loading: this.loading,
+        status: file ? (buf?.dirty ? `● ${file}` : file) : this.root?.split(/[\\/]/).pop() ?? "",
+        right: !file && this.desktop ? [chip(t, "files-desktop", "바탕화면", pinned === this.desktop, cx => this.toggleDesktop(cx), { toggle: true })] : [],
+        refresh: cx => { this.manual = true; this.refresh(cx); }, loading: this.manual && this.loading,
       }))
       .when(nano, el => el.child(bar().text_color(t.dim)
         .child(div().flex_1().min_w(0).truncate().child(buf?.reason ? REASONS[buf.reason] : "미리보기 불가"))
@@ -503,7 +505,7 @@ export default class Files extends View {
         .child(chip(t, "files-view-preview", "보기", buf.view === "preview", () => { buf.view = "preview"; }))
         .child(chip(t, "files-view-edit", "편집", buf.view === "edit", () => { buf.view = "edit"; }))))
       .when(!file, el => el.child(this.searchBar(t)))
-      .when(!file && Boolean(this.error), el => el.child(errorLine(t, "files-error", this.error, { retry: cx => this.refresh(cx), close: () => { this.error = null; } })))
+      .when(!file && Boolean(this.error), el => el.child(errorLine(t, "files-error", this.error, { retry: cx => this.refresh(cx), close: this.entries.get("")?.length ? () => { this.error = null; } : null })))
       .when(!file && Boolean(this.query.trim()), el => el.child(this.foundView(t)))
       .when(!file && !this.query.trim(), el => el.child(v_flex().id("files-tree").flex_1().min_h(0).overflow_y_scrollbar().p(6).children(this.rows("", 0, [], t))
         .when(!this.error && !this.entries.get("")?.length, el => el.child(note(t, this.loading ? "파일을 불러오는 중…" : this.root ? "파일이 없어요" : "폴더가 없어요")))

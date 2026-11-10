@@ -27,11 +27,11 @@ export function panel(t, id) {
     .text_color(t.foreground).text_size(TEXT.base);
 }
 
-/** A toggle chip, filled when on. Clicking the chip that is on does nothing. */
-export function chip(t, id, label, on, onClick) {
+/** A toggle chip, filled when on. Clicking the chip that is on does nothing, unless `toggle` (it can switch itself off). */
+export function chip(t, id, label, on, onClick, { toggle = false } = {}) {
   return h_flex().id(id).h(24).px(9).flex_none().items_center().rounded(6).cursor_pointer().text_size(TEXT.body)
     .bg(on ? t.selected : t.background).text_color(on ? t.foreground : t.muted)
-    .hover(s => s.bg(t.hover)).on_click((_e, cx) => { if (!on) fire(onClick, cx); }).child(label);
+    .hover(s => s.bg(t.hover)).on_click((_e, cx) => { if (!on || toggle) fire(onClick, cx); }).child(label);
 }
 
 /** A bordered text button. `danger` for delete / merge / close confirmations. */
@@ -91,8 +91,8 @@ export function confirmBox(t, id, text, { confirm, onConfirm, onCancel, danger =
 }
 
 /** A small menu: items { id, label, onClick, enabled = true, danger = false }, then an optional dim note. */
-export function menu(t, id, items, note = null) {
-  return v_flex().id(id).w(148).p(4).gap(1).rounded(7).border_1().border_color(t.border).bg(t.background)
+export function menu(t, id, items, note = null, { width = 148 } = {}) {
+  return v_flex().id(id).w(width).p(4).gap(1).rounded(7).border_1().border_color(t.border).bg(t.background)
     .children(items.map(it => {
       const enabled = it.enabled !== false;
       const el = div().id(it.id).h(ROW_H).px(10).flex().items_center().rounded(5).text_size(TEXT.body)
@@ -119,7 +119,7 @@ export function onEscape(cancel) {
 - 확인: `confirmBox`, 대상 바로 아래(또는 그 행 자리). 순서 [실행] [취소]. 삭제·머지·이슈 닫기·목록 삭제는 `danger`.
 - "취소" = 하던 일 그만두기(폼, 확인), "닫기" = 메시지·메뉴 치우기.
 - Esc: 입력칸이 있는 모든 폼(Tasks 추가·편집·목록 이름, Sessions 이름, 뷰어 검색은 검색어 지우기)에서 `onEscape`. 포커스가 없는 메뉴·확인창은 Esc 대상이 아니다(포커스를 잡을 수 없음).
-- 완료 알림: GitHub 이슈 닫기·PR 머지, Sessions 삭제 성공 시 `notify({ title, level: "info", timeout: 3000 })`. 문구: `이슈 #N을 닫았어요` / `PR #N을 머지했어요` / `세션을 휴지통으로 보냈어요`(원격·비Windows: `세션을 지웠어요`).
+- 완료 알림: GitHub 이슈 닫기·PR 머지, Sessions 삭제 성공 시 `notify({ title, level: "info", timeout: 3000 })`. 문구: `#N 이슈를 닫았어요` / `#N PR을 머지했어요`(실패: `#N 이슈를 닫지 못했어요` / `#N PR을 머지하지 못했어요`) / `세션을 휴지통으로 보냈어요`(원격·비Windows: `세션을 지웠어요`).
 - 패널 이름(탭 바 버튼 = 헤더 제목): Files · Changes · GitHub · Plugins · Sessions · Tasks.
 - 영어 화면 문구는 해요체 한국어로(키 이름 Ctrl/Alt/Shift, 고유명사, 명령어는 그대로): 예 "Loading files…"→"파일을 불러오는 중…", "Loading file…"→"파일을 여는 중…", "No files"→"파일이 없어요", "No folder"→"폴더가 없어요", "Cannot list this folder"→"폴더를 읽지 못했어요", "This file is no longer available"→"이 파일은 더 이상 없어요", "File list limited to …"→ 같은 뜻의 한국어, "Start an agent"→"에이전트 시작", "Checking installed agents…"→"설치된 에이전트를 확인하는 중…", "Could not load agents"→"에이전트 목록을 읽지 못했어요", "New space"→"새 스페이스", "New worktree…"→"새 워크트리…", "Open worktree…"→"워크트리 열기…", "This computer"→"이 PC", "N agents"/"N needs you" 류 → "에이전트 N개"/"N개가 기다려요", "not installed"→"설치 안 됨", "Terminal"(탭 기본 이름)은 그대로.
 
