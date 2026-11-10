@@ -2,6 +2,7 @@
 // Read only. Local or remote (the pane's machine), like the Files and GitHub panels.
 import { View, div } from "gpui-kit";
 import { v_flex, h_flex, TextView } from "gpui-base";
+import { panel as panelRoot, header, toolbar, chip, iconButton, errorLine, note } from "./ui.js";
 import { spaces, panes, focused, agents, exec, readTextFile, theme, layout, openOverlay, window } from "herdr";
 import {
   join, nativePath, samePath, ancestors, listingCommand, listingLines, frontmatter, agentKind, dragText,
@@ -187,43 +188,35 @@ export default class Plugins extends View {
           .when(off, el => el.child(badge("꺼짐", t.dim)))
           .when(failed, el => el.child(badge("읽지 못함", t.ansi1))))
         .when(Boolean(sub), el => el.child(div().min_w(0).truncate().text_size(11).text_color(t.dim).child(sub))))
-      .when(!this.context.on, el => el.child(div().id(`pl-open-${id}`).w(20).h(20).flex_none().flex().items_center().justify_center().rounded(5)
-        .text_color(t.dim).hover(s => s.bg(t.selected).text_color(t.foreground))
-        .on_mouse_down("left", (_e, cx) => cx.stop_propagation())
-        .on_click((_e, cx) => {
-          cx.stop_propagation();
-          const windows = window()?.platform === "windows";
-          openOverlay({ mod: "my-files-open", kind: "popup", width: 200, height: 136, props: { path: nativePath(item.file, windows), dir: false } });
-        })
-        .child("⋯")));
+      .when(!this.context.on, el => el.child(iconButton(t, `pl-open-${id}`, "⋯", () => {
+        const windows = window()?.platform === "windows";
+        openOverlay({ mod: "my-files-open", kind: "popup", width: 200, height: 136, props: { path: nativePath(item.file, windows), dir: false } });
+      }, { stop: true })));
   }
 
-  listView(t, chip, badge) {
+  listView(t, badge) {
     const c = this.context, agent = c?.agent ?? this.agent();
     const items = this.data ? (this.tab === "mcp" ? this.data.mcp : this.data.skills) : [];
     const problems = (this.data?.problems ?? []).filter(p => p.tab === this.tab);
-    const message = !c?.cwd ? "폴더가 없어요" : !this.data ? (this.error || "불러오는 중…") : emptyText(this.tab);
+    const message = !c?.cwd ? "폴더가 없어요" : !this.data ? "불러오는 중…" : emptyText(this.tab);
+    const showError = Boolean(c?.cwd && this.error);
     const where = c?.cwd ? (c.on ? `${c.on}:${base(c.cwd)}` : base(c.cwd)) : "";
     return [
-      h_flex().h(42).flex_none().px(14).gap(6).items_center().border_b(1).border_color(t.border)
-        .child(div().font_semibold().child("Plugins"))
-        .child(div().flex_1())
-        .child(chip("pl-agent-claude", "Claude", agent === "claude", cx => this.choose("claude", cx)))
-        .child(chip("pl-agent-codex", "Codex", agent === "codex", cx => this.choose("codex", cx)))
-        .child(div().id("plugins-refresh").w(20).cursor_pointer().text_color(t.muted)
-          .on_click((_e, cx) => { this.refresh(cx); cx.notify(); }).child(this.loading ? "…" : "⟳")),
-      h_flex().h(38).flex_none().px(10).gap(4).items_center().border_b(1).border_color(t.border)
-        .child(chip("pl-tab-mcp", "MCP", this.tab === "mcp", () => { this.tab = "mcp"; }))
-        .child(chip("pl-tab-skills", "Skills", this.tab === "skills", () => { this.tab = "skills"; }))
+      header(t, { id: "plugins", title: "Plugins", loading: this.loading, refresh: cx => this.refresh(cx),
+        right: [chip(t, "pl-agent-claude", "Claude", agent === "claude", cx => this.choose("claude", cx)),
+          chip(t, "pl-agent-codex", "Codex", agent === "codex", cx => this.choose("codex", cx))] }),
+      toolbar(t)
+        .child(chip(t, "pl-tab-mcp", "MCP", this.tab === "mcp", () => { this.tab = "mcp"; }))
+        .child(chip(t, "pl-tab-skills", "Skills", this.tab === "skills", () => { this.tab = "skills"; }))
         .child(div().flex_1().min_w(0).truncate().text_right().text_size(12).text_color(t.dim).child(where)),
+      ...(showError ? [errorLine(t, "plugins-error", this.error, { retry: cx => this.refresh(cx) })] : []),
       v_flex().id("plugins-list").flex_1().min_h(0).overflow_y_scrollbar().p(6)
-        .when(Boolean(this.error && this.data), el => el.child(div().px(8).py(4).text_size(12).text_color(t.ansi1).child(`⚠ ${this.error}`)))
         .children(problems.map(p => div().px(8).py(4).text_size(12).text_color(t.ansi1).child(`⚠ ${base(p.file)}을 읽지 못했어요`)))
         .children(groupBySource(items).flatMap(g => [
           div().px(8).pt(8).pb(2).text_size(11).text_color(t.muted).child(g.source),
           ...g.items.map(item => this.row(item, t, badge)),
         ]))
-        .when(items.length === 0, el => el.child(div().p(8).text_size(12).text_color(t.dim).child(message))),
+        .when(items.length === 0 && !showError, el => el.child(note(t, message))),
     ];
   }
 
@@ -240,10 +233,7 @@ export default class Plugins extends View {
         .when(Boolean(d.error), el => el.child(div().text_size(12).text_color(t.ansi1).child(`읽지 못함: ${d.error}`)))
         .children(configLines(d.config).map(line => div().pl(line.depth * 14).text_size(12).child(line.text)));
     return [
-      h_flex().h(42).flex_none().px(14).gap(8).items_center().border_b(1).border_color(t.border)
-        .child(div().id("plugins-back").flex_none().cursor_pointer().text_color(t.muted)
-          .on_click((_e, cx) => { this.detail = null; cx.notify(); }).child("← 목록"))
-        .child(div().flex_1().min_w(0).truncate().font_semibold().child(d.name)),
+      header(t, { id: "plugins", title: d.name, back: () => { this.detail = null; } }),
       body,
     ];
   }
@@ -253,17 +243,13 @@ export default class Plugins extends View {
     if (shown && (!this.wasShown || this.key() !== this.context?.key)) this.refresh(cx);
     this.wasShown = shown;
     const t = theme();
-    const chip = (id, label, on, onClick) => h_flex().id(id).h(24).px(9).flex_none().items_center().rounded(6).cursor_pointer().text_size(12)
-      .bg(on ? t.selected : t.background).text_color(on ? t.foreground : t.muted)
-      .hover(s => s.bg(t.hover)).on_click((_e, cx) => { onClick(cx); cx.notify(); }).child(label);
     const badge = (label, color) => div().flex_none().px(5).rounded(4).border_1().border_color(t.border).text_size(11).text_color(color).child(label);
-    return v_flex().id("plugins").size_full().min_h(0).rounded(10).overflow_hidden().bg(t.background).border_1().border_color(t.border)
-      .text_color(t.foreground).text_size(13)
+    return panelRoot(t, "plugins")
       .on_mouse_up("left", () => { this.drag = null; })
       // Window-relative panel box (pointer minus its in-panel offset): a drop back on it cancels.
       .on_mouse_move(e => { if (e.local_position) this.origin = { x: e.position.x - e.local_position.x, y: e.position.y - e.local_position.y }; })
       .on_size_change(size => { this.size = size; })
       .on_hover(hovered => { if (!hovered) this.dropOut(); })
-      .children(this.detail ? this.detailView(t, badge) : this.listView(t, chip, badge));
+      .children(this.detail ? this.detailView(t, badge) : this.listView(t, badge));
   }
 }
