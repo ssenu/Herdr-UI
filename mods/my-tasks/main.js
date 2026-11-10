@@ -1,5 +1,6 @@
-// Google Tasks in a side panel: lists, tasks with one level of subtasks, add / complete / edit / delete / reorder.
-// Every Google call goes through tasks.mjs (node), which prints one JSON line. Jobs run one at a time, in order.
+// Tasks in a side panel, kept in a local file or in Google Tasks: lists, tasks with one level of subtasks,
+// add / complete / edit / delete / reorder. Every call goes through tasks.mjs (node) with --backend local|google,
+// which prints one JSON line. Jobs run one at a time, in order.
 import { View, div } from "gpui-kit";
 import { v_flex, h_flex, InputState, Input, TextareaState, Textarea } from "gpui-base";
 import { exec, theme, layout, appHome } from "herdr";
@@ -30,7 +31,8 @@ export default class Tasks extends View {
     this.screen = "loading"; // "loading" | "login" | "list"
     this.loginInfo = errorText({ kind: "no-login" });
     this.waiting = null; // the login attempt being waited on
-    this.lists = []; this.listId = localStorage.getItem("my-tasks.list");
+    this.mode = localStorage.getItem("my-tasks.mode"); // "local" | "google"; null until the first read decides
+    this.lists = []; this.listId = this.mode ? this.savedList(this.mode) : null;
     this.tasks = []; this.tree = buildTree([]); this.loadedList = null; // the list this.tasks belongs to
     this.showDone = false; this.pickOpen = false; this.menuOpen = false;
     this.edit = null; // { id, error }
@@ -53,7 +55,7 @@ export default class Tasks extends View {
 
     cx.timer.every(REFRESH_MS, cx => {
       const retryLoad = this.screen === "loading" && this.error;
-      if (this.visible() && (this.screen === "list" || retryLoad) && this.idle()) { this.requestRefresh(cx); cx.notify(); }
+      if (this.mode === "google" && this.visible() && (this.screen === "list" || retryLoad) && this.idle()) { this.requestRefresh(cx); cx.notify(); }
     });
   }
 
@@ -68,11 +70,33 @@ export default class Tasks extends View {
     return !this.running && !this.queue.length && !this.edit && !this.confirm && !this.naming;
   }
 
-  // Runs the helper. Never throws: { ok: true, data } or { ok: false, error }.
-  async call(args, timeout) {
+  // The list last chosen in that mode; Google inherits the key used before modes existed.
+  savedList(mode) {
+    return localStorage.getItem(`my-tasks.list.${mode}`) ?? (mode === "google" ? localStorage.getItem("my-tasks.list") : null);
+  }
+
+  // Switches the backend and starts over on its lists. Called only from inside a running job.
+  setMode(mode) {
+    this.mode = mode;
+    localStorage.setItem("my-tasks.mode", mode);
+    this.lists = []; this.listId = this.savedList(mode); this.loadedList = null; this.setTasks([]);
+    this.edit = null; this.confirm = null; this.naming = null; this.pickOpen = false; this.menuOpen = false; this.showDone = false; this.error = null;
+    this.screen = "loading";
+  }
+
+  // Queued, so jobs already waiting finish against the backend they were made for.
+  switchMode(mode, cx) {
+    this.menuOpen = false;
+    this.waiting = null;
+    this.enqueue({ refresh: "all", run: async () => { this.setMode(mode); return { ok: true }; } }, cx);
+  }
+
+  // Runs the helper with this mode's backend (or the one given). Never throws: { ok: true, data } or { ok: false, error }.
+  async call(args, timeout, mode = this.mode) {
     if (!this.script) this.script = helperPath(appHome());
+    const [name, ...rest] = args;
     try {
-      const r = await exec("node", [this.script, ...args], timeout ? { timeout } : {});
+      const r = await exec("node", [this.script, name, "--backend", mode ?? "local", ...rest], timeout ? { timeout } : {});
       return parseOutput(r.stdout, r.stderr);
     } catch (e) { return { ok: false, error: execError(e) }; }
   }
@@ -131,6 +155,11 @@ export default class Tasks extends View {
 
   // Lists, then the chosen list's tasks. Returns an error or null.
   async fetchAll() {
+    if (!this.mode) {
+      // First run: Google if this PC is already signed in, otherwise local.
+      const s = await this.call(command("status"), undefined, "google");
+      this.setMode(s.ok ? "google" : "local");
+    }
     const l = await this.call(command("lists"));
     if (!l.ok) return l.error;
     this.lists = l.data;
@@ -154,7 +183,8 @@ export default class Tasks extends View {
 
   choose(id) {
     this.listId = id;
-    if (id) localStorage.setItem("my-tasks.list", id); else localStorage.removeItem("my-tasks.list");
+    const key = `my-tasks.list.${this.mode}`;
+    if (id) localStorage.setItem(key, id); else localStorage.removeItem(key);
     this.edit = null; this.confirm = null; this.showDone = false;
     this.loadedList = null;
     this.setTasks([]);
@@ -331,6 +361,8 @@ export default class Tasks extends View {
   header(t) {
     return h_flex().h(42).flex_none().px(14).gap(8).items_center().border_b(1).border_color(t.border)
       .child(div().font_semibold().child("Task"))
+      .when(Boolean(this.mode), el => el.child(div().flex_none().px(5).rounded(4).border_1().border_color(t.border).text_size(11).text_color(t.dim)
+        .child(this.mode === "google" ? "Google" : "로컬")))
       .child(div().flex_1().min_w(0).truncate().text_right().text_size(12).text_color(t.dim)
         .child(this.running || this.queue.length ? "동기화 중…" : ""))
       .child(div().id("tasks-refresh").w(20).cursor_pointer().text_color(t.muted)
@@ -344,13 +376,11 @@ export default class Tasks extends View {
       .when(Boolean(info.detail), el => el.child(div().text_size(12).text_color(t.dim).child(info.detail)))
       .children(SETUP.map(line => div().text_size(12).text_color(t.muted).child(line)))
       .child(div().text_size(12).text_color(t.dim).child("자세한 방법은 README의 Task 패널 절을 보세요."))
-      .child(this.waiting
-        ? h_flex().gap(8).items_center()
-          .child(div().text_size(12).child("브라우저에서 허용해 주세요…"))
-          .child(button("tasks-login-cancel", "취소", () => { this.waiting = null; }))
-        : h_flex().child(noClient
-          ? button("tasks-recheck", "다시 확인", cx => this.requestRefresh(cx))
-          : button("tasks-login", "로그인", cx => this.login(cx))));
+      .child(h_flex().gap(8).items_center()
+        .children(this.waiting
+          ? [div().text_size(12).child("브라우저에서 허용해 주세요…"), button("tasks-login-cancel", "취소", () => { this.waiting = null; })]
+          : [noClient ? button("tasks-recheck", "다시 확인", cx => this.requestRefresh(cx)) : button("tasks-login", "로그인", cx => this.login(cx))])
+        .child(button("tasks-to-local", "로컬로 돌아가기", cx => this.switchMode("local", cx))));
   }
 
   listView(t, button, icon) {
@@ -374,7 +404,10 @@ export default class Tasks extends View {
       .when(Boolean(current), el => el
         .child(button("tasks-list-rename", "목록 이름 바꾸기", () => this.startNaming("rename")))
         .when(this.loadedList === this.listId, el => el.child(button("tasks-list-delete", "목록 삭제", () => this.askDeleteList()))))
-      .child(button("tasks-logout", "로그아웃", cx => this.logout(cx))));
+      .when(this.mode === "local", el => el.child(button("tasks-to-google", "Google Tasks 연동", cx => this.switchMode("google", cx))))
+      .when(this.mode === "google", el => el
+        .child(button("tasks-to-local-menu", "로컬로 전환", cx => this.switchMode("local", cx)))
+        .child(button("tasks-logout", "로그아웃", cx => this.logout(cx)))));
     if (this.naming) out.push(h_flex().h(38).flex_none().px(10).gap(6).items_center().border_b(1).border_color(t.border)
       .child(div().flex_none().text_size(12).text_color(t.dim).child(this.naming.mode === "new" ? "새 목록" : "이름"))
       .child(Input.new(this.nameInput).flex_1().h(26).text_size(12.5))
