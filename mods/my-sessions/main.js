@@ -2,6 +2,7 @@
 // newest first. A row reopens the session in a new tab with `claude -r <id>`. Local or remote.
 import { View, div } from "gpui-kit";
 import { v_flex, h_flex, InputState, Input } from "gpui-base";
+import { panel, header, toolbar, chip, button, iconButton, errorLine, note, confirmBox, menu, onEscape } from "./ui.js";
 import { spaces, panes, focused, exec, run, notify, theme, layout, window } from "herdr";
 import { encodeProject, worktreePaths, sessionLines, liveIds, toSessions, pickSessions, isUnder, sessionMeta, tabTitle, emptyText, sessionsCommand, renameCommand, colorCommand, deleteCommand, COLORS, actionError, deleteConfirmText } from "./logic.js";
 
@@ -120,6 +121,7 @@ export default class Sessions extends View {
     if (kind === "rename" && (a.step !== "rename" || !this.nameInput.value().trim())) return;
     if (kind === "color" && a.step !== "color") return;
     const windows = !context.on && window()?.platform === "windows";
+    const permanent = Boolean(context.on) || window()?.platform !== "windows";
     let c;
     try {
       c = kind === "rename" ? renameCommand(a.dir, a.id, this.nameInput.value(), windows)
@@ -133,7 +135,11 @@ export default class Sessions extends View {
       catch (e) { if (/timed?\s?out|timeout/i.test(String(e?.message ?? e))) failure = "응답이 늦어요. 목록을 새로 읽어 확인해 주세요"; }
       const error = !r ? failure : r.code === 0 ? null : actionError(r.code, r.stderr);
       if (this.act === a) {
-        if (error) { a.step = "failed"; a.error = error; } else this.act = null;
+        if (error) { a.step = "failed"; a.error = error; }
+        else {
+          this.act = null;
+          if (kind === "delete") notify({ title: permanent ? "세션을 지웠어요" : "세션을 휴지통으로 보냈어요", level: "info", timeout: 3000 });
+        }
       } else if (error) {
         notify({ title: kind === "rename" ? "세션 이름을 바꾸지 못했어요" : kind === "color" ? "세션 색을 바꾸지 못했어요" : "세션을 지우지 못했어요", body: error, level: "error", timeout: 5000 });
       }
@@ -144,20 +150,17 @@ export default class Sessions extends View {
 
   // Under a row: the small ⋯ menu at the right, or the delete question, progress or error.
   // Renaming happens in the row itself (see titleCell).
-  actBox(s, live, t, button) {
+  actBox(s, live, t) {
     const a = this.act;
     if (!a || a.id !== s.id || a.step === "rename" || (a.step === "running" && a.kind === "rename")) return [];
+    const close = () => { this.act = null; };
     if (a.step === "menu") {
-      const item = (id, label, onClick, enabled = true) => div().id(id).px(10).py(4).rounded(5).text_size(12)
-        .text_color(enabled ? t.foreground : t.dim)
-        .when(enabled, el => el.cursor_pointer().hover(st => st.bg(t.hover)).on_click((_e, cx) => { onClick(); cx.notify(); }))
-        .child(label);
       return [h_flex().flex_none().justify_end().px(8).mb(4)
-        .child(v_flex().id(`session-menu-${s.id}`).w(live ? 220 : 132).p(4).gap(1).rounded(7).border_1().border_color(t.border).bg(t.background)
-          .child(item("session-rename", "수정", () => this.startRename(), !live))
-          .child(item("session-color", "색상", () => { a.step = "color"; }, !live))
-          .child(item("session-delete", "삭제", () => { a.step = "confirm"; }, !live))
-          .when(live, el => el.child(div().px(10).py(4).text_size(11).text_color(t.dim).child("열려 있는 세션은 Claude에서 /rename, /color로 바꿔 주세요"))))];
+        .child(menu(t, `session-menu-${s.id}`, [
+          { id: "session-rename", label: "수정", enabled: !live, onClick: () => this.startRename() },
+          { id: "session-color", label: "색상", enabled: !live, onClick: () => { a.step = "color"; } },
+          { id: "session-delete", label: "삭제", enabled: !live, onClick: () => { a.step = "confirm"; } },
+        ], live ? "열려 있는 세션은 Claude에서 /rename, /color로 바꿔 주세요" : null))];
     }
     if (a.step === "color") {
       const current = s.color ?? "default";
@@ -168,19 +171,15 @@ export default class Sessions extends View {
           .children(COLORS.map(color => div().id(`session-color-${color}`).w(16).h(16).flex_none().rounded(8).cursor_pointer()
             .bg(HEX[color]).border_2().border_color(ring(color === current))
             .on_click((_e, cx) => { const go = pick(color); if (go) go(cx); cx.notify(); })))
-          .child(div().id("session-color-default").h(16).px(4).flex_none().flex().items_center().rounded(4).cursor_pointer().text_size(12)
-            .text_color(t.foreground).border_1().border_color(ring(current === "default")).hover(st => st.bg(t.hover))
-            .on_click((_e, cx) => { const go = pick("default"); if (go) go(cx); cx.notify(); })
-            .child("기본")))];
+          .child(div().rounded(8).border_2().border_color(ring(current === "default"))
+            .child(button(t, "session-color-default", "기본", cx => { const go = pick("default"); if (go) go(cx); }))))];
     }
-    const box = h_flex().id(`session-act-${s.id}`).flex_none().mx(8).mb(4).px(8).py(6).gap(6).items_center().flex_wrap()
-      .rounded(7).bg(t.hover).text_size(12);
-    if (a.step === "confirm") return [box
-      .child(div().child(deleteConfirmText(a.title, Boolean(this.context?.on) || window()?.platform !== "windows")))
-      .child(button("session-delete-ok", "삭제", cx => this.runAct("delete", cx)))
-      .child(button("session-act-close", "취소", () => { this.act = null; }))];
-    if (a.step === "running") return [box.child(div().text_color(t.dim).child(a.kind === "color" ? "색 바꾸는 중…" : "지우는 중…"))];
-    return [box.child(div().flex_1().min_w(0).text_color(t.ansi1).child(`⚠ ${a.error}`)).child(button("session-act-close", "닫기", () => { this.act = null; }))];
+    const id = `session-act-${s.id}`;
+    if (a.step === "confirm") return [confirmBox(t, id, deleteConfirmText(a.title, Boolean(this.context?.on) || window()?.platform !== "windows"),
+      { confirm: "삭제", onConfirm: cx => this.runAct("delete", cx), onCancel: close }).mx(8).mb(4)];
+    if (a.step === "running") return [h_flex().id(id).flex_none().mx(8).mb(4).px(8).py(6).gap(6).items_center().rounded(7).bg(t.hover).text_size(12)
+      .child(div().text_color(t.dim).child(a.kind === "color" ? "색 바꾸는 중…" : "지우는 중…"))];
+    return [errorLine(t, id, a.error, { close }).mx(8).mb(4)];
   }
 
   renaming(s) {
@@ -192,17 +191,14 @@ export default class Sessions extends View {
   titleCell(s, t) {
     const a = this.act;
     if (!this.renaming(s)) return div().flex_1().min_w(0).truncate().child(s.title);
-    if (a.step === "running") return div().flex_1().min_w(0).truncate().text_color(t.dim).child(`${this.nameInput.value().trim()} …`);
+    if (a.step === "running") return div().flex_1().min_w(0).truncate().text_color(t.dim).child(`${this.nameInput.value().trim()}…`);
     const stop = (_e, cx) => cx.stop_propagation();
-    const icon = (id, label, onClick) => div().id(id).w(20).h(20).flex_none().flex().items_center().justify_center().rounded(5)
-      .cursor_pointer().text_color(t.muted).hover(st => st.bg(t.selected).text_color(t.foreground))
-      .on_mouse_down("left", stop).on_click((_e, cx) => { cx.stop_propagation(); onClick(cx); cx.notify(); }).child(label);
     return h_flex().id(`session-name-${s.id}`).flex_1().min_w(0).gap(4).items_center()
       .on_mouse_down("left", stop).on_click(stop)
-      .on_key_down((e, cx) => { if (e.key === "escape") { cx.stop_propagation(); this.act = null; cx.notify(); } })
+      .on_key_down(onEscape(() => { this.act = null; }))
       .child(Input.new(this.nameInput).flex_1().min_w(0).h(24).text_size(13))
-      .child(icon(`session-name-ok-${s.id}`, "✓", cx => this.runAct("rename", cx)))
-      .child(icon(`session-name-cancel-${s.id}`, "✕", () => { this.act = null; }));
+      .child(iconButton(t, `session-name-ok-${s.id}`, "✓", cx => this.runAct("rename", cx), { stop: true }))
+      .child(iconButton(t, `session-name-cancel-${s.id}`, "✕", () => { this.act = null; }, { stop: true }));
   }
 
   render(cx) {
@@ -213,25 +209,14 @@ export default class Sessions extends View {
     const picked = d ? pickSessions(d.sessions, this.scope, { worktrees: d.worktrees, cwd: c.cwd }, SHOW_LIMIT) : { items: [], more: false };
     const name = d?.root ?? c?.cwd;
     const where = name ? (c?.on ? `${c.on}:${base(name)}` : base(name)) : "";
-    const message = !c?.cwd ? "폴더가 없어요" : !d ? (this.error || "불러오는 중…") : emptyText(this.scope);
-    const chip = (id, label, on, onClick) => h_flex().id(id).h(24).px(9).flex_none().items_center().rounded(6).cursor_pointer().text_size(12)
-      .bg(on ? t.selected : t.background).text_color(on ? t.foreground : t.muted)
-      .hover(s => s.bg(t.hover)).on_click((_e, cx) => { onClick(); cx.notify(); }).child(label);
-    const button = (id, label, onClick) => h_flex().id(id).h(24).px(8).flex_none().items_center().rounded(6).cursor_pointer()
-      .text_size(12).text_color(t.foreground).border_1().border_color(t.border).bg(t.background).hover(s => s.bg(t.selected))
-      .on_click((_e, cx) => { onClick(cx); cx.notify(); }).child(label);
-    return v_flex().id("sessions").size_full().min_h(0).rounded(10).overflow_hidden().bg(t.background).border_1().border_color(t.border)
-      .text_color(t.foreground).text_size(13)
-      .child(h_flex().h(42).flex_none().px(14).gap(8).items_center().border_b(1).border_color(t.border)
-        .child(div().font_semibold().child("Sessions"))
-        .child(div().flex_1().min_w(0).truncate().text_right().text_size(12).text_color(t.dim).child(where))
-        .child(div().id("sessions-refresh").w(20).cursor_pointer().text_color(t.muted)
-          .on_click((_e, cx) => { this.refresh(cx); cx.notify(); }).child(this.loading ? "…" : "⟳")))
-      .child(h_flex().h(38).flex_none().px(10).gap(4).items_center().border_b(1).border_color(t.border)
-        .child(chip("sessions-all", "전체", this.scope === "all", () => { this.scope = "all"; }))
-        .child(chip("sessions-here", "지금 폴더", this.scope === "here", () => { this.scope = "here"; })))
+    const message = !c?.cwd ? "폴더가 없어요" : !d ? (this.error ? null : "불러오는 중…") : emptyText(this.scope);
+    return panel(t, "sessions")
+      .child(header(t, { id: "sessions", title: "Sessions", status: where, refresh: cx => this.refresh(cx), loading: this.loading }))
+      .child(toolbar(t)
+        .child(chip(t, "sessions-all", "전체", this.scope === "all", () => { this.scope = "all"; }))
+        .child(chip(t, "sessions-here", "지금 폴더", this.scope === "here", () => { this.scope = "here"; })))
       .child(v_flex().id("sessions-list").flex_1().min_h(0).overflow_y_scrollbar().p(6)
-        .when(Boolean(this.error && d), el => el.child(div().px(8).py(4).text_size(12).text_color(t.ansi1).child(`⚠ ${this.error}`)))
+        .when(Boolean(this.error), el => el.child(errorLine(t, "sessions-error", this.error, { retry: cx => this.refresh(cx), close: () => { this.error = null; } })))
         .children(picked.items.flatMap(s => {
           const live = d.live.has(s.id.toLowerCase());
           return [v_flex().id(`session-${s.id}`).flex_none().px(8).py(6).gap(3).rounded(7).cursor_pointer().hover(st => st.bg(t.hover)).relative()
@@ -241,15 +226,11 @@ export default class Sessions extends View {
               .when(live, el => el.child(div().flex_none().w(8).h(8).rounded(4).bg(t.ansi2)))
               .child(this.titleCell(s, t))
               // ⋯: its press and click stop here, so the row doesn't open the session.
-              .when(!this.renaming(s), el => el.child(div().id(`session-more-${s.id}`).w(20).h(20).flex_none().flex().items_center().justify_center().rounded(5)
-                .text_color(t.dim).hover(st => st.bg(t.selected).text_color(t.foreground))
-                .on_mouse_down("left", (_e, cx) => cx.stop_propagation())
-                .on_click((_e, cx) => { cx.stop_propagation(); this.toggleMenu(s); cx.notify(); })
-                .child("⋯"))))
+              .when(!this.renaming(s), el => el.child(iconButton(t, `session-more-${s.id}`, "⋯", () => this.toggleMenu(s), { stop: true }))))
             .child(div().min_w(0).truncate().text_size(11).text_color(t.dim).child(sessionMeta(s, d.root, now))),
-          ...this.actBox(s, live, t, button)];
+          ...this.actBox(s, live, t)];
         }))
-        .when(picked.more, el => el.child(div().p(8).text_size(11).text_color(t.dim).child("최근 100개만 보여 줘요")))
-        .when(picked.items.length === 0, el => el.child(div().p(8).text_size(12).text_color(t.dim).child(message))));
+        .when(picked.more, el => el.child(note(t, "최근 100개만 보여 줘요")))
+        .when(picked.items.length === 0 && Boolean(message), el => el.child(note(t, message))));
   }
 }
