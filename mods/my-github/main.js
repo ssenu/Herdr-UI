@@ -2,6 +2,7 @@
 // and a hand-off to an agent: into the focused agent's prompt (no Enter), or a new Claude tab.
 import { View, div } from "gpui-kit";
 import { v_flex, h_flex, TextView } from "gpui-base";
+import { panel as panelRoot, header, toolbar, chip, button, errorLine, note, confirmBox } from "./ui.js";
 import { spaces, panes, focused, agents, exec, run, notify, theme, layout, openOverlay } from "herdr";
 import { listArgs, viewArgs, sortByUpdated, ciSummary, reviewLabel, stateLabel, relativeTime, agentPrompt, tabName, ghError, emptyText, dragText, canAct, actionArgs, confirmText, METHODS, methodLabel } from "./logic.js";
 
@@ -158,6 +159,7 @@ export default class GitHub extends View {
       try { r = await ghRun(actionArgs(act.kind, act.number, act.method), context); }
       catch { r = { ok: false, error: { kind: "other", message: "명령을 만들지 못했어요" } }; }
       if (r.ok) {
+        notify({ title: act.kind === "pr" ? `PR #${act.number}을 머지했어요` : `이슈 #${act.number}을 닫았어요`, level: "info", timeout: 3000 });
         if (this.act === act) this.act = null;
       } else if (this.act === act) {
         act.step = "failed"; act.error = r.error;
@@ -178,24 +180,24 @@ export default class GitHub extends View {
     });
   }
 
-  // The close / merge controls at the end of the detail toolbar, or null when the item can't be acted on.
-  actionRow(t, button) {
+  // The close / merge controls: { inline } goes at the end of the detail toolbar, { below } right under it.
+  actionRow(t) {
     const d = this.detail, data = d.data;
-    if (!canAct(d.kind, data)) return null;
+    if (!canAct(d.kind, data)) return {};
     const pr = d.kind === "pr", key = itemKey(d.kind, data.number), context = this.context;
     const act = this.act?.key === key && this.act.context === context ? this.act : null; // same number in another repo is another item
     const start = method => ({ key, context, kind: d.kind, number: data.number, step: method || !pr ? "confirm" : "pick", method: method ?? null, error: null });
-    const row = h_flex().flex_none().gap(8).items_center().flex_wrap().text_size(12); // sits in the toolbar, after its buttons
-    const cancel = button("gh-act-cancel", "취소", () => { this.act = null; });
+    const cancel = () => { this.act = null; };
     // One at a time: starting here while another runs would forget that one, and could run it twice.
-    if (!act && this.act?.step === "running") return row.child(div().text_color(t.dim).child(`#${this.act.number} 처리가 끝나면 할 수 있어요`));
-    if (!act) return row.child(button("gh-act-start", pr ? "머지" : "이슈 닫기", () => { this.act = start(null); }));
-    if (act.step === "pick") return row.children(METHODS.map(m => button(`gh-merge-${m}`, methodLabel(m), () => { this.act = start(m); }))).child(cancel);
-    if (act.step === "confirm") return row.child(div().child(confirmText(d.kind, data.number, act.method)))
-      .child(button("gh-act-go", pr ? "머지" : "닫기", cx => this.runAction(cx))).child(cancel);
-    if (act.step === "running") return row.child(div().text_color(t.dim).child(pr ? "머지 중…" : "닫는 중…"));
-    return row.child(div().text_color(t.ansi1).child(`⚠ ${act.error?.message ?? "gh 오류"}`))
-      .child(button("gh-act-retry", "다시 시도", cx => this.runAction(cx))).child(cancel);
+    if (!act && this.act?.step === "running") return { inline: div().text_size(12).text_color(t.dim).child(`#${this.act.number} 처리가 끝나면 할 수 있어요`) };
+    if (!act) return { inline: button(t, "gh-act-start", pr ? "머지" : "이슈 닫기", () => { this.act = start(null); }) };
+    if (act.step === "pick") return { below: h_flex().mx(10).my(6).gap(6).items_center().flex_wrap()
+      .children(METHODS.map(m => button(t, `gh-merge-${m}`, methodLabel(m), () => { this.act = start(m); })))
+      .child(button(t, "gh-act-cancel", "취소", cancel)) };
+    if (act.step === "confirm") return { below: confirmBox(t, "gh-act", confirmText(d.kind, data.number, act.method),
+      { confirm: pr ? "머지" : "닫기", onConfirm: cx => this.runAction(cx), onCancel: cancel, danger: true }).mx(10).my(6) };
+    if (act.step === "running") return { inline: div().text_size(12).text_color(t.dim).child(pr ? "머지 중…" : "닫는 중…") };
+    return { below: errorLine(t, "gh-act-error", act.error?.message ?? "gh 오류", { retry: cx => this.runAction(cx), close: cancel }) };
   }
 
   handOff(cx) {
@@ -233,44 +235,41 @@ export default class GitHub extends View {
         .child(div().flex_1().min_w(0).truncate().child(meta)));
   }
 
-  listView(t, chip) {
-    const message = !this.context?.cwd ? "폴더가 없어요"
-      : this.error ? this.error.message
-      : this.loading ? "불러오는 중…" : emptyText(this.kind, this.filter);
+  listView(t) {
+    const hasCwd = Boolean(this.context?.cwd);
+    const message = !hasCwd ? "폴더가 없어요" : this.loading ? "불러오는 중…" : emptyText(this.kind, this.filter);
     return [
-      h_flex().h(42).flex_none().px(14).gap(8).items_center().border_b(1).border_color(t.border)
-        .child(div().font_semibold().child("GitHub"))
-        .child(div().flex_1().min_w(0).truncate().text_right().text_size(12).text_color(!this.loading && this.error && this.items.length ? t.ansi1 : t.dim)
-          .child(this.loading ? "불러오는 중…" : this.error && this.items.length ? "⚠ " + this.error.message : this.repo?.nameWithOwner ?? ""))
-        .child(div().id("github-refresh").w(20).cursor_pointer().text_color(t.muted)
-          .on_click((_e, cx) => { this.refresh(cx); cx.notify(); }).child("⟳")),
-      h_flex().h(38).flex_none().px(10).gap(4).items_center().border_b(1).border_color(t.border)
-        .child(chip("gh-kind-issue", "이슈", this.kind === "issue", cx => this.setKind("issue", cx)))
-        .child(chip("gh-kind-pr", "PR", this.kind === "pr", cx => this.setKind("pr", cx)))
+      header(t, { id: "github", title: "GitHub", status: this.loading ? "불러오는 중…" : this.repo?.nameWithOwner ?? "",
+        refresh: cx => this.refresh(cx) }),
+      toolbar(t)
+        .child(chip(t, "gh-kind-issue", "이슈", this.kind === "issue", cx => this.setKind("issue", cx)))
+        .child(chip(t, "gh-kind-pr", "PR", this.kind === "pr", cx => this.setKind("pr", cx)))
         .child(div().w(8))
-        .child(chip("gh-filter-open", "전체", this.filter === "open", cx => this.setFilter("open", cx)))
-        .child(chip("gh-filter-mine", "내 것", this.filter === "mine", cx => this.setFilter("mine", cx)))
-        .child(chip("gh-filter-closed", "닫힘", this.filter === "closed", cx => this.setFilter("closed", cx))),
+        .child(chip(t, "gh-filter-open", "전체", this.filter === "open", cx => this.setFilter("open", cx)))
+        .child(chip(t, "gh-filter-mine", "내 것", this.filter === "mine", cx => this.setFilter("mine", cx)))
+        .child(chip(t, "gh-filter-closed", "닫힘", this.filter === "closed", cx => this.setFilter("closed", cx))),
+      ...(hasCwd && this.error ? [errorLine(t, "github-error", this.error.message, { retry: cx => this.refresh(cx) })] : []),
       v_flex().id("github-list").flex_1().min_h(0).overflow_y_scrollbar().p(6)
         .children(this.items.map(item => this.row(item, t)))
-        .when(this.items.length === 0, el => el.child(div().p(8).text_size(12).text_color(t.dim).child(message))),
+        .when(this.items.length === 0 && !(hasCwd && this.error), el => el.child(note(t, message))),
     ];
   }
 
-  detailView(t, button) {
+  detailView(t) {
     const d = this.detail, item = d.data ?? d.item, target = this.target(), data = d.data;
     const content = v_flex().id("github-detail").flex_1().min_h(0).overflow_y_scrollbar().p(14).gap(12);
+    const action = d.data ? this.actionRow(t) : {};
     return [
-      h_flex().h(42).flex_none().px(14).gap(8).items_center().border_b(1).border_color(t.border)
-        .child(div().id("github-back").w(20).cursor_pointer().text_color(t.muted)
-          .on_click((_e, cx) => { this.detail = null; if (this.act?.step !== "running") this.act = null; cx.notify(); }).child("←"))
-        .child(div().flex_1().min_w(0).truncate().font_semibold().child(`#${item.number} ${item.title}`)),
-      h_flex().min_h(38).flex_none().px(14).py(6).gap(8).items_center().flex_wrap().border_b(1).border_color(t.border)
-        .child(button("github-open", "브라우저로 열기", cx => cx.open_url(item.url)))
-        .child(button("github-agent", target ? `→ ${target.name} 입력창에 넣기` : "새 탭에서 Claude 시작", cx => this.handOff(cx)))
-        .children(d.data ? [this.actionRow(t, button)].filter(Boolean) : []),
-      d.error ? content.child(div().text_color(t.dim).child(d.error.message))
-      : !data ? content.child(div().text_color(t.dim).child("불러오는 중…"))
+      header(t, { id: "github", title: `#${item.number} ${item.title}`,
+        back: () => { this.detail = null; if (this.act?.step !== "running") this.act = null; } }),
+      toolbar(t).flex_wrap().h_auto().min_h(38).py(6)
+        .child(button(t, "github-open", "브라우저로 열기", cx => cx.open_url(item.url)))
+        .child(button(t, "github-agent", target ? `→ ${target.name} 입력창에 넣기` : "새 탭에서 Claude 시작", cx => this.handOff(cx)))
+        .children(action.inline ? [action.inline] : []),
+      ...(action.below ? [action.below] : []),
+      ...(d.error ? [errorLine(t, "github-detail-error", d.error.message, { retry: cx => this.openDetail(d.item, cx, d.kind) })] : []),
+      d.error ? content
+      : !data ? content.child(note(t, "불러오는 중…"))
       : content
         .child(div().text_size(12).text_color(t.dim)
           .child([`#${data.number}`, stateLabel(data.state), data.author?.login, relativeTime(data.createdAt, Date.now())].filter(Boolean).join(" · ")))
@@ -287,19 +286,12 @@ export default class GitHub extends View {
     this.wasShown = shown;
     if (key() !== this.context?.key) this.refresh(cx);
     const t = theme();
-    const chip = (id, label, on, onClick) => h_flex().id(id).h(24).px(9).flex_none().items_center().rounded(6).cursor_pointer().text_size(12)
-      .bg(on ? t.selected : t.background).text_color(on ? t.foreground : t.muted)
-      .hover(s => s.bg(t.hover)).on_click((_e, cx) => { onClick(cx); cx.notify(); }).child(label);
-    const button = (id, label, onClick) => h_flex().id(id).h(24).px(8).flex_none().items_center().rounded(6).cursor_pointer()
-      .text_size(12).text_color(t.foreground).border_1().border_color(t.border).hover(s => s.bg(t.hover))
-      .on_click((_e, cx) => { onClick(cx); cx.notify(); }).child(label);
-    return v_flex().id("github").size_full().min_h(0).rounded(10).overflow_hidden().bg(t.background).border_1().border_color(t.border)
-      .text_color(t.foreground).text_size(13)
+    return panelRoot(t, "github")
       .on_mouse_up("left", () => { this.drag = null; })
       // Window-relative panel box (pointer minus its in-panel offset): a drop back on it cancels.
       .on_mouse_move(e => { if (e.local_position) this.origin = { x: e.position.x - e.local_position.x, y: e.position.y - e.local_position.y }; })
       .on_size_change(size => { this.size = size; })
       .on_hover(hovered => { if (!hovered) this.dropOut(); })
-      .children(this.detail ? this.detailView(t, button) : this.listView(t, chip));
+      .children(this.detail ? this.detailView(t) : this.listView(t));
   }
 }
