@@ -121,6 +121,7 @@ export function errorText(error) {
   const kind = error?.kind ?? "internal", message = error?.message ?? "";
   if (Object.hasOwn(LOGIN, kind)) return { screen: "login", kind, text: LOGIN[kind], detail: kind === "no-client" ? message : null };
   if (Object.hasOwn(BAR, kind)) return { screen: "bar", kind, text: BAR[kind], detail: null };
+  if (kind === "local") return { screen: "bar", kind, text: message || "로컬 저장 파일 오류", detail: null };
   if (kind === "api") return { screen: "bar", kind, text: message || "Google Tasks 오류", detail: null };
   return { screen: "bar", kind, text: `내부 오류: ${message || "알 수 없는 오류"}`, detail: null };
 }

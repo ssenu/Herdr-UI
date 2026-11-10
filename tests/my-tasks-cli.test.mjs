@@ -74,3 +74,29 @@ test("makeEnv().writeFile writes atomically and leaves no .tmp file", async () =
     assert.deepEqual(fs.readdirSync(dir), ["token.json"]);
   } finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });
+
+test("parseCommand: --backend", () => {
+  assert.deepEqual(C.parseCommand(["lists", "--backend", "local", "--"]), { name: "lists", args: { backend: "local" } });
+  assert.deepEqual(C.parseCommand(["add", "--backend", "google", "--parent", "p", "--", "L", "x"]).args, { backend: "google", parent: "p", list: "L", title: "x" });
+  assert.throws(() => C.parseCommand(["lists", "--backend", "cloud", "--"]), usage);
+  assert.throws(() => C.parseCommand(["login", "--backend", "local", "--"]), e => e?.kind === "usage" && e.message === "로컬 모드에는 로그인이 없어요");
+  assert.throws(() => C.parseCommand(["logout", "--backend", "local", "--"]), usage);
+});
+
+test("main with the local backend", async () => {
+  let n = 0;
+  const env = { ...memEnv(), localPath: "/l.json", newId: () => `id${++n}` };
+  const a = capture();
+  await C.main(["lists", "--backend", "local", "--"], env, a.out);
+  assert.deepEqual(JSON.parse(a.lines[0]), { ok: true, data: [{ id: "id1", title: "내 할 일" }] });
+  const b = capture();
+  await C.main(["add", "--backend", "local", "--", "id1", "우유 사기"], env, b.out);
+  assert.equal(JSON.parse(b.lines[0]).data.title, "우유 사기");
+});
+
+test("makeEnv has the local file and an id maker", () => {
+  const env = C.makeEnv("/app/my-tasks");
+  assert.equal(env.localPath.replaceAll("\\", "/"), "/app/my-tasks/local.json");
+  assert.match(env.newId(), /^[0-9a-f]{16}$/);
+  assert.notEqual(env.newId(), env.newId());
+});

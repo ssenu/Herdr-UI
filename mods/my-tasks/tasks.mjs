@@ -1,4 +1,4 @@
-// Google Tasks helper for the my-tasks mod: `node tasks.mjs <command> [--flag value]... -- [args]...`
+// Task helper for the my-tasks mod (local file or Google Tasks): `node tasks.mjs <command> [--backend local|google] [--flag value]... -- [args]...`
 // Prints exactly one JSON line: {"ok":true,"data":...} or {"ok":false,"error":{"kind":"...","message":"..."}}.
 // Its files live in <Herdr app folder>/my-tasks/ (two folders up from this file, then my-tasks).
 import { readFileSync, writeFileSync, mkdirSync, rmSync, renameSync } from "node:fs";
@@ -8,6 +8,7 @@ import { createServer } from "node:http";
 import { randomBytes, createHash } from "node:crypto";
 import { spawn } from "node:child_process";
 import * as G from "./google.mjs";
+import * as L from "./local.mjs";
 
 const SPEC = {
   status: [], login: [], logout: [], lists: [],
@@ -22,7 +23,7 @@ const usage = message => new G.TasksError("usage", message);
 export function parseCommand(argv) {
   const [name, ...rest] = argv;
   if (!name || !Object.hasOwn(SPEC, name)) throw usage(`알 수 없는 명령: ${name ?? ""}`);
-  const allowed = FLAGS[name] ?? [], args = {}, positional = [];
+  const allowed = [...(FLAGS[name] ?? []), "backend"], args = {}, positional = [];
   let i = 0;
   for (; i < rest.length && rest[i] !== "--"; i++) {
     const m = /^--([a-z]+)$/.exec(rest[i]);
@@ -32,6 +33,8 @@ export function parseCommand(argv) {
   positional.push(...rest.slice(i + 1));
   if (positional.length !== SPEC[name].length) throw usage(`${name}: 인자 ${SPEC[name].length}개가 필요해요`);
   SPEC[name].forEach((k, j) => { args[k] = positional[j]; });
+  if ("backend" in args && args.backend !== "local" && args.backend !== "google") throw usage("--backend는 local 또는 google이에요");
+  if (args.backend === "local" && (name === "login" || name === "logout")) throw usage("로컬 모드에는 로그인이 없어요");
   if (name === "update") {
     let fields;
     try { fields = JSON.parse(args.json); } catch { throw usage("update: JSON을 읽지 못했어요"); }
@@ -59,6 +62,8 @@ export function makeEnv(dir = join(dirname(fileURLToPath(import.meta.url)), ".."
     now: () => Date.now(),
     clientPath: join(dir, "client.json"),
     tokenPath: join(dir, "token.json"),
+    localPath: join(dir, "local.json"),
+    newId: () => randomBytes(8).toString("hex"),
   };
 }
 
@@ -124,21 +129,22 @@ function login(env) {
 }
 
 async function run(env, { name, args: a }) {
+  const B = a.backend === "local" ? L : G; // no flag: Google, as before modes existed
   switch (name) {
-    case "status": return G.status(env);
+    case "status": return B.status(env);
     case "login": return login(env);
     case "logout": return G.logout(env);
-    case "lists": return G.lists(env);
-    case "list-add": return G.listAdd(env, a.title);
-    case "list-rename": return G.listRename(env, a.id, a.title);
-    case "list-delete": return G.listDelete(env, a.id);
-    case "tasks": return G.tasks(env, a.list);
-    case "add": return G.add(env, a.list, a.title, a.parent);
-    case "update": return G.update(env, a.list, a.id, a.fields);
-    case "done": return G.done(env, a.list, a.id);
-    case "undone": return G.undone(env, a.list, a.id);
-    case "delete": return G.remove(env, a.list, a.id);
-    case "move": return G.move(env, a.list, a.id, { parent: a.parent, previous: a.previous });
+    case "lists": return B.lists(env);
+    case "list-add": return B.listAdd(env, a.title);
+    case "list-rename": return B.listRename(env, a.id, a.title);
+    case "list-delete": return B.listDelete(env, a.id);
+    case "tasks": return B.tasks(env, a.list);
+    case "add": return B.add(env, a.list, a.title, a.parent);
+    case "update": return B.update(env, a.list, a.id, a.fields);
+    case "done": return B.done(env, a.list, a.id);
+    case "undone": return B.undone(env, a.list, a.id);
+    case "delete": return B.remove(env, a.list, a.id);
+    case "move": return B.move(env, a.list, a.id, { parent: a.parent, previous: a.previous });
   }
   throw usage(`알 수 없는 명령: ${name}`);
 }

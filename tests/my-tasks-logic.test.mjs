@@ -171,3 +171,9 @@ test("moveArgs: a promoted orphan can only outdent; nothing moves around it", ()
   assert.deepEqual(L.moveArgs(t, "c", "down"), null);
   assert.deepEqual(L.moveArgs(t, "b", "up"), { parent: null, previous: "a" });
 });
+
+test("errorText: a broken local file shows its message in the error bar", () => {
+  assert.deepEqual(L.errorText({ kind: "local", message: "로컬 저장 파일을 읽지 못했어요: C:/a/local.json" }),
+    { screen: "bar", kind: "local", text: "로컬 저장 파일을 읽지 못했어요: C:/a/local.json", detail: null });
+  assert.equal(L.errorText({ kind: "local" }).text, "로컬 저장 파일 오류");
+});

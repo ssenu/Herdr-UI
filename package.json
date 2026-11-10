@@ -4,7 +4,7 @@
   "type": "module",
   "description": "Herdr mods: editable Files panel, drag paths into terminals, GitHub issues/PR panel, MCP and skills panel, Claude sessions panel, system monitor in the status bar, Google Tasks panel",
   "scripts": {
-    "test": "node --test tests/my-files-logic.test.mjs tests/my-github-logic.test.mjs tests/my-files-open-logic.test.mjs tests/my-plugins-logic.test.mjs tests/my-sessions-logic.test.mjs tests/my-status-logic.test.mjs tests/my-viewer-logic.test.mjs tests/my-tab-drag-logic.test.mjs tests/my-tabs-logic.test.mjs tests/my-usage-logic.test.mjs tests/my-tasks-logic.test.mjs tests/my-tasks-google.test.mjs tests/my-tasks-cli.test.mjs"
+    "test": "node --test tests/my-files-logic.test.mjs tests/my-github-logic.test.mjs tests/my-files-open-logic.test.mjs tests/my-plugins-logic.test.mjs tests/my-sessions-logic.test.mjs tests/my-status-logic.test.mjs tests/my-viewer-logic.test.mjs tests/my-tab-drag-logic.test.mjs tests/my-tabs-logic.test.mjs tests/my-usage-logic.test.mjs tests/my-tasks-logic.test.mjs tests/my-tasks-google.test.mjs tests/my-tasks-cli.test.mjs tests/my-tasks-local.test.mjs"
   },
   "license": "Apache-2.0"
 }
