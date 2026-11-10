@@ -134,14 +134,14 @@ export default class MyStatus extends View {
   async close() { this.hovered = false; this.hoverSeq++; this.closeDash(); this.usageHovered = false; this.usageSeq++; this.closeUsage(); }
 
   // The palette key as actually bound, not a hardcoded one; without a
-  // binding the hint stays useful ("commands") instead of lying.
+  // binding the hint stays useful ("명령") instead of lying.
   hint(t) {
     const mac = window()?.platform === "macos";
     const mod = { cmd: mac ? "⌘" : "Ctrl+", ctrl: mac ? "⌃" : "Ctrl+", shift: mac ? "⇧" : "Shift+", alt: mac ? "⌥" : "Alt+", option: mac ? "⌥" : "Alt+" };
     const b = keys().find((k) => k.section === "global" && k.action === "app.palette");
     const parts = b && b.keys.endsWith("--") ? [...b.keys.slice(0, -2).split("-"), "-"] : b?.keys.split("-");
     const key = parts && parts.map((p) => mod[p.toLowerCase()] ?? p.toUpperCase()).join("");
-    return key ? `${key}  commands` : "commands";
+    return key ? `${key}  명령` : "명령";
   }
 
   render() {
@@ -152,17 +152,17 @@ export default class MyStatus extends View {
     const label = (icon, text) => h_flex().gap(6).items_center().child(svg(`mods/workspace-chrome/${icon}.svg`).size(13)).child(text);
     const parts = this.fails.hidden ? [] : summaryParts(this.metrics, Boolean(space?.machine));
     const usage = usageSummary(this.usage, Date.now());
-    return h_flex().id("my-status").size_full().px(14).gap(16).items_center().bg(t.chrome).border_t(1).border_color(t.border).text_size(11.8).text_color(t.muted)
+    return h_flex().id("my-status").size_full().px(14).gap(16).items_center().bg(t.chrome).border_t(1).border_color(t.border).text_size(12).text_color(t.muted)
       .on_mouse_move(e => {
         if (e.local_position) this.origin = { x: e.position.x - e.local_position.x, y: e.position.y - e.local_position.y };
         this.openDash();
         this.openUsage();
       })
       .on_size_change(size => { this.size = size; })
-      .child(label(space?.machine ? "server" : "monitor", space?.machine ?? "This computer"))
+      .child(label(space?.machine ? "server" : "monitor", space?.machine ?? "이 PC"))
       .when(Boolean(space?.branch), el => el.child(label("branch", space.branch)))
-      .child(h_flex().gap(6).items_center().child(div().size(6).rounded(3).bg(t.dim)).child(`${list.length} agents`)
-        .when(needs > 0, el => el.child(div().text_color(t.blocked).child(`· ${needs} needs you`))))
+      .child(h_flex().gap(6).items_center().child(div().size(6).rounded(3).bg(t.dim)).child(`에이전트 ${list.length}개`)
+        .when(needs > 0, el => el.child(div().text_color(t.blocked).child(`· ${needs}개가 기다려요`))))
       .child(div().flex_1())
       .when(Boolean(usage), el => el.child(div().id("status-usage").flex_none()
         .on_hover((on, cx) => this.hoverUsage(on, cx))
