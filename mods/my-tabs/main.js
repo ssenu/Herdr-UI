@@ -132,7 +132,7 @@ export default class Tabs extends View {
       const on = active && chip.focused; // a tab that is not showing keeps its last focused pane
       const icon = (id, file, close) => div().id(`${id}-${chip.pane}`).flex_none().text_color(t.dim).hover(s => s.text_color(t.foreground)).on_mouse_down("left", stop)
         .on_click((_e, cx) => { cx.stop_propagation(); this.chipAction(chip, close, space.id, cx); }).child(svg(file).size(12));
-      return h_flex().id(`chip-${chip.pane}`).h(29).px(8).gap(6).rounded(7).items_center().flex_none().text_size(12.8)
+      return h_flex().id(`chip-${chip.pane}`).h(29).px(8).gap(6).rounded(7).items_center().flex_none().text_size(13)
         .border(1).border_color(on ? t.border : t.chrome).bg(on ? t.raised : t.chrome).text_color(on ? t.foreground : t.muted)
         .hover(s => s.bg(t.hover)).on_mouse_down("left", stop)
         .on_click(() => run("pane.focus", { pane: chip.pane }))
@@ -147,7 +147,7 @@ export default class Tabs extends View {
       const program = own.find(p => p.program?.agent)?.program ?? own[0]?.program;
       const name = /^tb\d+$/.test(c.name) ? program?.name ?? "Terminal" : c.name;
       const lit = c.active && !chips.some(x => x.focused), status = chips.length ? hostStatus(own) : c.status;
-      const tab = h_flex().id(`tab-${c.id}`).h(29).px(10).gap(7).rounded(7).items_center().flex_none().text_size(12.8)
+      const tab = h_flex().id(`tab-${c.id}`).h(29).px(10).gap(7).rounded(7).items_center().flex_none().text_size(13)
         .border(1).border_color(lit ? t.border : t.chrome).bg(lit ? t.raised : t.chrome).text_color(lit ? t.foreground : t.muted)
         .hover(s => s.bg(t.hover))
         .on_mouse_down("left", (e, cx) => {
@@ -198,9 +198,9 @@ export default class Tabs extends View {
       .when(enabled.includes("files"), el => el.child(panelButton("files", "Files", "mods/files/file.svg")))
       .when(enabled.includes("changes"), el => el.child(panelButton("changes", "Changes", "mods/changes/changes.svg")))
       .when(enabled.includes("github"), el => el.child(panelButton("github", "GitHub", "mods/my-github/github.svg")))
-      .when(enabled.includes("plugins"), el => el.child(panelButton("plugins", "Plugin", "mods/my-plugins/plugins.svg")))
-      .when(enabled.includes("sessions"), el => el.child(panelButton("sessions", "Session", "mods/my-sessions/sessions.svg")))
-      .when(enabled.includes("tasks"), el => el.child(panelButton("tasks", "Task", "mods/my-tasks/tasks.svg")))
+      .when(enabled.includes("plugins"), el => el.child(panelButton("plugins", "Plugins", "mods/my-plugins/plugins.svg")))
+      .when(enabled.includes("sessions"), el => el.child(panelButton("sessions", "Sessions", "mods/my-sessions/sessions.svg")))
+      .when(enabled.includes("tasks"), el => el.child(panelButton("tasks", "Tasks", "mods/my-tasks/tasks.svg")))
       .when(w?.buttons, el => el.child(button("minimize", w.platform === "windows" ? svg("mods/my-tabs/win-min.svg").size(16) : "−", () => run("window.minimize")))
         .child(button("maximize", w.platform === "windows" ? svg(`mods/my-tabs/${w.maximized ? "win-restore" : "win-max"}.svg`).size(16) : "□", () => run("window.maximize")))
         .child(button("close-window", w.platform === "windows" ? svg("mods/my-tabs/win-close.svg").size(16) : svg("mods/pane/close.svg").size(13), () => run("window.close"))));
