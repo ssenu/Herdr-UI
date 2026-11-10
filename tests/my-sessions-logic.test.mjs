@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { spawnSync } from "node:child_process";
+import { spawnSync, spawn } from "node:child_process";
 import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join as pjoin } from "node:path";
@@ -307,3 +307,26 @@ for (const windows of [true, false]) {
     assert.equal(run(L.deleteCommand("C--r-app", U2, windows)).status, 2);
   });
 }
+
+test("deleteCommand run (powershell): a file that cannot be removed leaves its folder alone", { skip: process.platform !== "win32" }, async t => {
+  const home = pjoin(mkdtempSync(pjoin(tmpdir(), "session-acts-")), "it's 홈");
+  const store = pjoin(home, ".claude", "projects", "C--r-app");
+  mkdirSync(pjoin(store, U1, "subagents"), { recursive: true });
+  const file = pjoin(store, `${U1}.jsonl`);
+  writeFileSync(file, "{}\n");
+  // Another process holds the file open exclusively, so deleting it fails.
+  const holder = spawn("powershell", ["-NoProfile", "-Command",
+    `$s = [IO.File]::Open(${L.psQuote(file)}, 'Open', 'Read', 'None'); [Console]::Out.WriteLine('ready'); Start-Sleep -Seconds 60`], { stdio: ["ignore", "pipe", "ignore"] });
+  t.after(() => holder.kill());
+  await new Promise(res => holder.stdout.once("data", res));
+  const c = L.deleteCommand("C--r-app", U1, true);
+  const r = spawnSync(c.command, c.args, { encoding: "utf8", env: { ...process.env, USERPROFILE: home } });
+  assert.equal(r.status, 1, r.stderr);
+  assert.ok(existsSync(file));
+  assert.ok(existsSync(pjoin(store, U1, "subagents")));
+});
+
+test("deleteCommand sh script: the folder goes only after the file, exit 1 and 4", () => {
+  const { args } = L.deleteCommand("C--r-app", U1, false);
+  assert.ok(args[1].includes('rm -f "$d/$2.jsonl" || exit 1; rm -rf "$d/$2" || exit 4'));
+});

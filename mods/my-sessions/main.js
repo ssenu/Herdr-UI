@@ -60,13 +60,12 @@ export default class Sessions extends View {
   refresh(cx) {
     const next = key();
     if (next !== this.context?.key) {
-      if (this.act?.step !== "running") this.act = null;
       const loc = location();
       // Same machine and still inside a known worktree: keep the list instead of blanking it.
       const keep = Boolean(this.data && this.context && this.context.on === loc.on && loc.cwd
         && this.data.worktrees.some(w => isUnder(loc.cwd, w)));
       this.context = { key: next, cwd: loc.cwd, on: loc.on };
-      if (!keep) this.data = null;
+      if (!keep) { this.data = null; if (this.act?.step !== "running") this.act = null; }
       this.error = null; this.loading = false; this.again = false;
     }
     if (!this.context.cwd) return;
@@ -121,9 +120,10 @@ export default class Sessions extends View {
     catch (e) { a.step = "failed"; a.error = String(e?.message ?? e); return; }
     a.step = "running"; a.kind = kind;
     cx.spawn(async cx => {
-      let r = null;
-      try { r = await exec(c.command, c.args, { on: context.on }); } catch {}
-      const error = !r ? "명령을 실행하지 못했어요" : r.code === 0 ? null : actionError(r.code, r.stderr);
+      let r = null, failure = "명령을 실행하지 못했어요";
+      try { r = await exec(c.command, c.args, { on: context.on, timeout: 60000 }); }
+      catch (e) { if (/timed?\s?out|timeout/i.test(String(e?.message ?? e))) failure = "응답이 늦어요. 목록을 새로 읽어 확인해 주세요"; }
+      const error = !r ? failure : r.code === 0 ? null : actionError(r.code, r.stderr);
       if (this.act === a) {
         if (error) { a.step = "failed"; a.error = error; } else this.act = null;
       } else if (error) {
@@ -150,7 +150,7 @@ export default class Sessions extends View {
       .child(button("session-rename-ok", "저장", cx => this.runAct("rename", cx)))
       .child(close)];
     if (a.step === "confirm") return [box
-      .child(div().child(deleteConfirmText(a.title, Boolean(this.context?.on))))
+      .child(div().child(deleteConfirmText(a.title, Boolean(this.context?.on) || window()?.platform !== "windows")))
       .child(button("session-delete-ok", "삭제", cx => this.runAct("delete", cx)))
       .child(close)];
     if (a.step === "running") return [box.child(div().text_color(t.dim).child(a.kind === "rename" ? "이름 바꾸는 중…" : "지우는 중…"))];

@@ -260,12 +260,17 @@ export function renameCommand(dir, id, title, windows) {
   const line = JSON.stringify({ type: "custom-title", customTitle: name, sessionId: id });
   if (windows) {
     const script = [
+      "$ErrorActionPreference = 'Stop'",
       `$f = [IO.Path]::Combine($env:USERPROFILE, '.claude', 'projects', ${psQuote(dir)}, ${psQuote(`${id}.jsonl`)})`,
       "if (-not [IO.File]::Exists($f)) { exit 2 }",
-      "$s = [IO.File]::Open($f, 'Open', 'ReadWrite', 'ReadWrite, Delete')",
-      "try { $nl = $true; if ($s.Length -gt 0) { [void]$s.Seek(-1, 'End'); $nl = $s.ReadByte() -eq 10 }; [void]$s.Seek(0, 'End'); " +
+      "try { $nl = $true; " +
+        "$r = [IO.File]::Open($f, 'Open', 'Read', 'ReadWrite, Delete'); " +
+        "try { if ($r.Length -gt 0) { [void]$r.Seek(-1, 'End'); $nl = $r.ReadByte() -eq 10 } } finally { $r.Close() }; " +
         `$text = $(if ($nl) { '' } else { [string][char]10 }) + ${psQuote(line)} + [char]10; ` +
-        "$b = [Text.UTF8Encoding]::new($false).GetBytes($text); $s.Write($b, 0, $b.Length) } finally { $s.Close() }",
+        "$b = [Text.UTF8Encoding]::new($false).GetBytes($text); " +
+        "$w = [IO.File]::Open($f, [IO.FileMode]::Append, [IO.FileAccess]::Write, 'ReadWrite, Delete'); " +
+        "try { $w.Write($b, 0, $b.Length) } finally { $w.Close() } " +
+        "} catch { [Console]::Error.WriteLine($_.Exception.Message); exit 1 }",
     ].join("; ");
     return { command: "powershell", args: ["-NoProfile", "-Command", script] };
   }
@@ -276,35 +281,39 @@ export function renameCommand(dir, id, title, windows) {
 
 /**
  * Deletes a session file and its same-named folder: to the Recycle Bin on Windows, for good elsewhere.
- * Exit 3: the session is open (nothing deleted). Exit 2: no such session file.
+ * Exit 3: the session is open (nothing deleted). Exit 2: no such session file. Exit 1: the file could not be
+ * removed (the folder is left alone). Exit 4: the file is gone but its folder could not be removed.
  */
 export function deleteCommand(dir, id, windows) {
   checkTarget(dir, id);
   if (windows) {
     const script = [
+      "$ErrorActionPreference = 'Stop'",
       `$id = ${psQuote(id)}`,
       "$live = Join-Path $env:USERPROFILE '.claude\\sessions'",
       psLiveLoop("if ($i.Groups[1].Value -eq $id) { exit 3 } "),
       `$d = [IO.Path]::Combine($env:USERPROFILE, '.claude', 'projects', ${psQuote(dir)})`,
       "$file = Join-Path $d ($id + '.jsonl'); $sub = Join-Path $d $id",
       "if (-not [IO.File]::Exists($file)) { exit 2 }",
-      "Add-Type -AssemblyName Microsoft.VisualBasic",
-      "[Microsoft.VisualBasic.FileIO.FileSystem]::DeleteFile($file, 'OnlyErrorDialogs', 'SendToRecycleBin')",
-      "if ([IO.Directory]::Exists($sub)) { [Microsoft.VisualBasic.FileIO.FileSystem]::DeleteDirectory($sub, 'OnlyErrorDialogs', 'SendToRecycleBin') }",
+      "try { Add-Type -AssemblyName Microsoft.VisualBasic; [Microsoft.VisualBasic.FileIO.FileSystem]::DeleteFile($file, 'OnlyErrorDialogs', 'SendToRecycleBin') } " +
+        "catch { [Console]::Error.WriteLine($_.Exception.Message); exit 1 }",
+      "if ([IO.Directory]::Exists($sub)) { try { [Microsoft.VisualBasic.FileIO.FileSystem]::DeleteDirectory($sub, 'OnlyErrorDialogs', 'SendToRecycleBin') } " +
+        "catch { [Console]::Error.WriteLine($_.Exception.Message); exit 4 } }",
     ].join("; ");
     return { command: "powershell", args: ["-NoProfile", "-Command", script] };
   }
-  const script = shLiveLoop('[ "$id" = "$2" ] && exit 3') +
-    'd="$HOME/.claude/projects/$1"; [ -f "$d/$2.jsonl" ] || exit 2; rm -f "$d/$2.jsonl" && rm -rf "$d/$2"';
+  const script = shLiveLoop(`[ "$(printf %s "$id" | tr 'A-F' 'a-f')" = "$(printf %s "$2" | tr 'A-F' 'a-f')" ] && exit 3`) +
+    'd="$HOME/.claude/projects/$1"; [ -f "$d/$2.jsonl" ] || exit 2; rm -f "$d/$2.jsonl" || exit 1; rm -rf "$d/$2" || exit 4';
   return { command: "sh", args: ["-c", script, "delete", dir, id] };
 }
 
 export function actionError(code, stderr) {
   if (code === 2) return "세션 파일이 없어요";
   if (code === 3) return "열려 있는 세션은 지울 수 없어요";
+  if (code === 4) return "세션은 지웠지만 함께 있던 폴더는 지우지 못했어요";
   return String(stderr ?? "").split(/\r?\n/).map(l => l.trim()).find(Boolean) || "실패했어요";
 }
 
-export function deleteConfirmText(title, remote) {
-  return remote ? `"${title}" 세션을 완전히 지울까요? 되돌릴 수 없어요.` : `"${title}" 세션을 휴지통으로 보낼까요?`;
+export function deleteConfirmText(title, permanent) {
+  return permanent ? `"${title}" 세션을 완전히 지울까요? 되돌릴 수 없어요.` : `"${title}" 세션을 휴지통으로 보낼까요?`;
 }
