@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { mkdtempSync, mkdirSync, writeFileSync } from "node:fs";
+import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join as pjoin } from "node:path";
 // Tests the repository copy of the mod (mods/ next to tests/).
@@ -58,11 +58,13 @@ test("sessionLines: tab-separated rows with JSON tokens", () => {
 test("toSessions: title order, start folder, UUID ids only", () => {
   const base = { dir: "-r-app", id: U1, mtime: 5, cwd: "/r/app/sub", branch: "main" };
   const [a] = L.toSessions([{ ...base, customTitle: "내 이름", aiTitle: "자동" }]);
-  assert.deepEqual(a, { id: U1, title: "내 이름", mtime: 5, branch: "main", folder: "/r/app" });
+  assert.deepEqual(a, { id: U1, title: "내 이름", mtime: 5, branch: "main", folder: "/r/app", dir: "-r-app" });
   assert.equal(L.toSessions([{ ...base, customTitle: "", aiTitle: "자동\n제목" }])[0].title, "자동 제목");
   assert.equal(L.toSessions([{ ...base, customTitle: "", aiTitle: "" }])[0].title, "(제목 없음)");
   assert.deepEqual(L.toSessions([{ ...base, id: "../evil", customTitle: "", aiTitle: "" }]), []);
   assert.deepEqual(L.toSessions([{ ...base, id: "--dangerous", customTitle: "", aiTitle: "" }]), []);
+  assert.deepEqual(L.toSessions([{ ...base, dir: "../x", customTitle: "", aiTitle: "" }]), []);
+  assert.deepEqual(L.toSessions([{ ...base, dir: "a/b", customTitle: "", aiTitle: "" }]), []);
 });
 
 test("inScope and pickSessions", () => {
@@ -221,5 +223,87 @@ for (const windows of [true, false]) {
     const none = spawnSync(c.command, c.args, { encoding: "utf8", env: empty });
     assert.equal(none.status, 0, none.stderr);
     assert.deepEqual(L.sessionLines(none.stdout), []);
+  });
+}
+
+const U3 = "33333333-3333-4333-8333-333333333333";
+
+test("renameCommand: checked inputs, the record line, both shells", () => {
+  const sh = L.renameCommand("-r-app", U1, "  새   이름 ", false);
+  assert.equal(sh.command, "sh");
+  assert.equal(sh.args[0], "-c");
+  assert.deepEqual(sh.args.slice(2), ["rename", "-r-app", U1, JSON.stringify({ type: "custom-title", customTitle: "새 이름", sessionId: U1 })]);
+  const ps = L.renameCommand("C--r-app", U1, "it's 이름", true);
+  assert.equal(ps.command, "powershell");
+  assert.deepEqual(ps.args.slice(0, 2), ["-NoProfile", "-Command"]);
+  assert.ok(ps.args[2].includes(L.psQuote("C--r-app")));
+  assert.ok(ps.args[2].includes(L.psQuote(JSON.stringify({ type: "custom-title", customTitle: "it's 이름", sessionId: U1 }))));
+  assert.throws(() => L.renameCommand("../x", U1, "a", false), /세션을 가리키지 못했어요/);
+  assert.throws(() => L.renameCommand("a/b", U1, "a", true), /세션을 가리키지 못했어요/);
+  assert.throws(() => L.renameCommand("-r-app", "nope", "a", false), /세션을 가리키지 못했어요/);
+  assert.throws(() => L.renameCommand("-r-app", U1, " \n ", false), /이름이 비어 있어요/);
+});
+
+test("deleteCommand: checked inputs, both shells", () => {
+  const sh = L.deleteCommand("-r-app", U1, false);
+  assert.equal(sh.command, "sh");
+  assert.deepEqual(sh.args.slice(2), ["delete", "-r-app", U1]);
+  const ps = L.deleteCommand("C--r-app", U1, true);
+  assert.equal(ps.command, "powershell");
+  assert.ok(ps.args[2].includes("SendToRecycleBin"));
+  assert.throws(() => L.deleteCommand("..", U1, true), /세션을 가리키지 못했어요/);
+  assert.throws(() => L.deleteCommand("-r-app", "x", false), /세션을 가리키지 못했어요/);
+});
+
+test("actionError and deleteConfirmText", () => {
+  assert.equal(L.actionError(2, ""), "세션 파일이 없어요");
+  assert.equal(L.actionError(3, ""), "열려 있는 세션은 지울 수 없어요");
+  assert.equal(L.actionError(1, "\n  Access denied\nmore"), "Access denied");
+  assert.equal(L.actionError(1, ""), "실패했어요");
+  assert.equal(L.deleteConfirmText("작업", false), '"작업" 세션을 휴지통으로 보낼까요?');
+  assert.equal(L.deleteConfirmText("작업", true), '"작업" 세션을 완전히 지울까요? 되돌릴 수 없어요.');
+});
+
+for (const windows of [true, false]) {
+  const shell = windows ? "powershell" : "sh";
+  const runs = !spawnSync(shell, windows ? ["-NoProfile", "-Command", "exit 0"] : ["-c", "exit 0"]).error;
+  test(`renameCommand and deleteCommand run (${shell})`, { skip: !runs || (windows && process.platform !== "win32") }, t => {
+    const home = pjoin(mkdtempSync(pjoin(tmpdir(), "session-acts-")), "it's 홈");
+    const store = pjoin(home, ".claude", "projects", "C--r-app");
+    mkdirSync(store, { recursive: true });
+    const env = { ...process.env, USERPROFILE: home, HOME: windows ? home : home.replaceAll("\\", "/") };
+    const run = c => spawnSync(c.command, c.args, { encoding: "utf8", env });
+    const file = u => pjoin(store, `${u}.jsonl`);
+    writeFileSync(file(U1), JSON.stringify({ cwd: "C:\\r\\app" })); // no final newline
+    writeFileSync(file(U2), JSON.stringify({ cwd: "C:\\r\\app" }) + "\n");
+    const title = 'it\'s "$HOME" `x` 이름';
+    for (const u of [U1, U2]) {
+      const r = run(L.renameCommand("C--r-app", u, title, windows));
+      assert.equal(r.status, 0, r.stderr);
+      const lines = readFileSync(file(u), "utf8").split("\n");
+      assert.equal(lines.length, 3);
+      assert.deepEqual(JSON.parse(lines[1]), { type: "custom-title", customTitle: title, sessionId: u });
+      assert.equal(lines[2], "");
+    }
+    const listed = L.sessionLines(run(L.sessionsCommand(["C--r-app"], windows)).stdout);
+    assert.equal(listed.find(x => x.id === U1).customTitle, title);
+    assert.equal(run(L.renameCommand("C--r-app", U3, "x", windows)).status, 2);
+
+    // U1 is open: its record points at a running process.
+    const sessions = pjoin(home, ".claude", "sessions");
+    mkdirSync(sessions, { recursive: true });
+    const sleeper = windows ? null : spawnSync("sh", ["-c", "sleep 30 >/dev/null 2>&1 & echo $!"], { encoding: "utf8" }).stdout.trim();
+    if (sleeper) t.after(() => spawnSync("sh", ["-c", `kill ${sleeper}`]));
+    writeFileSync(pjoin(sessions, "1.json"), JSON.stringify({ pid: sleeper ? Number(sleeper) : process.pid, sessionId: U1, startedAt: Date.now() }));
+    assert.equal(run(L.deleteCommand("C--r-app", U1, windows)).status, 3);
+    assert.ok(existsSync(file(U1)));
+
+    mkdirSync(pjoin(store, U2, "subagents"), { recursive: true });
+    writeFileSync(pjoin(store, U2, "subagents", "a.jsonl"), "{}\n");
+    const del = run(L.deleteCommand("C--r-app", U2, windows));
+    assert.equal(del.status, 0, del.stderr);
+    assert.ok(!existsSync(file(U2)));
+    assert.ok(!existsSync(pjoin(store, U2)));
+    assert.equal(run(L.deleteCommand("C--r-app", U2, windows)).status, 2);
   });
 }

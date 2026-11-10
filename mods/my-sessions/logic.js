@@ -97,14 +97,18 @@ export function liveIds(stdout) {
 
 const clean = t => String(t ?? "").replace(/\s+/g, " ").trim();
 
+/** Storage folder names under ~/.claude/projects: encodeProject's output. */
+const STORE = /^[A-Za-z0-9-]+$/;
+
 /** Rows → sessions to show. The id goes into a command line, so only real UUIDs pass. */
 export function toSessions(rows) {
-  return rows.filter(r => UUID.test(r.id)).map(r => ({
+  return rows.filter(r => UUID.test(r.id) && STORE.test(r.dir ?? "")).map(r => ({
     id: r.id,
     title: clean(r.customTitle) || clean(r.aiTitle) || "(제목 없음)",
     mtime: r.mtime,
     branch: r.branch,
     folder: startFolder(r.dir, r.cwd),
+    dir: r.dir,
   })).filter(s => usableFolder(s.folder));
 }
 
@@ -164,6 +168,27 @@ export function psQuote(s) {
 
 const HEAD_BYTES = 262144, TAIL_BYTES = 65536, MAX_FILES = 300;
 
+// The loop over ~/.claude/sessions/*.json that finds sessions a running Claude Code has open.
+// `found` runs for each one, with the session id in $i.Groups[1].Value. Needs $live set first.
+function psLiveLoop(found) {
+  return "if ([IO.Directory]::Exists($live)) { foreach ($f in [IO.Directory]::GetFiles($live, '*.json')) { try { " +
+    "$t = [IO.File]::ReadAllText($f); " +
+    "$p = [regex]::Match($t, '\"pid\"\\s*:\\s*(\\d+)'); $i = [regex]::Match($t, '\"sessionId\"\\s*:\\s*\"([0-9a-fA-F-]{36})\"'); $s = [regex]::Match($t, '\"startedAt\"\\s*:\\s*(\\d+)'); " +
+    "if (-not $p.Success -or -not $i.Success) { continue }; " +
+    "$proc = Get-Process -Id ([int]$p.Groups[1].Value) -ErrorAction Stop; " +
+    "if ($s.Success -and [DateTimeOffset]::new($proc.StartTime.ToUniversalTime()).ToUnixTimeMilliseconds() -gt [long]$s.Groups[1].Value + 5000) { continue }; " +
+    found +
+    "} catch {} } }";
+}
+
+// The same for sh; `found` runs with the id in $id.
+function shLiveLoop(found) {
+  return 'for f in "$HOME/.claude/sessions"/*.json; do [ -f "$f" ] || continue; ' +
+    `pid=$(grep -a -o -E '"pid": *[0-9]+' "$f" | head -n 1 | sed 's/.*[^0-9]//'); ` +
+    `id=$(grep -a -o -E '"sessionId": *"[0-9a-fA-F-]{36}"' "$f" | head -n 1 | sed 's/.*: *"//; s/"$//'); ` +
+    `[ -n "$pid" ] && [ -n "$id" ] && kill -0 "$pid" 2>/dev/null && ${found}; done; `;
+}
+
 /**
  * One command printing a FILE line per session under ~/.claude/projects/<prefix or prefix-*>:
  * only the first cwd, the last titles and the last branch, read from the file's two ends.
@@ -178,14 +203,7 @@ export function sessionsCommand(prefixes, windows) {
       "[Console]::OutputEncoding = [System.Text.UTF8Encoding]::new($false)",
       "$live = Join-Path $env:USERPROFILE '.claude\\sessions'",
       // A process that started after the session did has only inherited the pid of a dead one.
-      "if ([IO.Directory]::Exists($live)) { foreach ($f in [IO.Directory]::GetFiles($live, '*.json')) { try { " +
-        "$t = [IO.File]::ReadAllText($f); " +
-        "$p = [regex]::Match($t, '\"pid\"\\s*:\\s*(\\d+)'); $i = [regex]::Match($t, '\"sessionId\"\\s*:\\s*\"([0-9a-fA-F-]{36})\"'); $s = [regex]::Match($t, '\"startedAt\"\\s*:\\s*(\\d+)'); " +
-        "if (-not $p.Success -or -not $i.Success) { continue }; " +
-        "$proc = Get-Process -Id ([int]$p.Groups[1].Value) -ErrorAction Stop; " +
-        "if ($s.Success -and [DateTimeOffset]::new($proc.StartTime.ToUniversalTime()).ToUnixTimeMilliseconds() -gt [long]$s.Groups[1].Value + 5000) { continue }; " +
-        "\"LIVE`t$($i.Groups[1].Value)\" " +
-        "} catch {} } }",
+      psLiveLoop("\"LIVE`t$($i.Groups[1].Value)\" "),
       "$base = Join-Path $env:USERPROFILE '.claude\\projects'",
       "if (-not [IO.Directory]::Exists($base)) { exit 0 }",
       `$prefixes = @(${prefixes.map(psQuote).join(", ")})`,
@@ -212,10 +230,7 @@ export function sessionsCommand(prefixes, windows) {
   const grab = (key, pick) => `grep -a -o -E '"${key}":"([^"\\]|[\\].)*"' | ${pick} -n 1 | sed 's/^"[A-Za-z]*"://'`;
   const script =
     'LC_ALL=C; export LC_ALL; ' +
-    'for f in "$HOME/.claude/sessions"/*.json; do [ -f "$f" ] || continue; ' +
-    `pid=$(grep -a -o -E '"pid": *[0-9]+' "$f" | head -n 1 | sed 's/.*[^0-9]//'); ` +
-    `id=$(grep -a -o -E '"sessionId": *"[0-9a-fA-F-]{36}"' "$f" | head -n 1 | sed 's/.*: *"//; s/"$//'); ` +
-    '[ -n "$pid" ] && [ -n "$id" ] && kill -0 "$pid" 2>/dev/null && printf "LIVE\\t%s\\n" "$id"; done; ' +
+    shLiveLoop('printf "LIVE\\t%s\\n" "$id"') +
     'base="$HOME/.claude/projects"; [ -d "$base" ] || exit 0; cd "$base" || exit 1; ' +
     // "./" first: on Unix every storage name starts with "-", which head, tail and stat would read as an option.
     'for p in "$@"; do for f in "./$p"/*.jsonl "./$p"-*/*.jsonl; do [ -f "$f" ] || continue; ' +
@@ -228,4 +243,68 @@ export function sessionsCommand(prefixes, windows) {
     'rest=${f#./}; dir=${rest%%/*}; id=${f##*/}; id=${id%.jsonl}; ' +
     'printf "FILE\\t%s\\t%s\\t%s\\t%s\\t%s\\t%s\\t%s\\n" "$dir" "$id" "$m" "$cwd" "$custom" "$ai" "$branch"; done';
   return { command: "sh", args: ["-c", script, "sessions", ...prefixes] };
+}
+
+function checkTarget(dir, id) {
+  if (!STORE.test(String(dir ?? "")) || !UUID.test(String(id ?? ""))) throw new Error("세션을 가리키지 못했어요");
+}
+
+/**
+ * Renames a session the way Claude Code's /rename does: one custom-title record appended to its file.
+ * A file not ending in a newline gets one first. Exit 2: no such session file.
+ */
+export function renameCommand(dir, id, title, windows) {
+  checkTarget(dir, id);
+  const name = String(title ?? "").replace(/\s+/g, " ").trim();
+  if (!name) throw new Error("이름이 비어 있어요");
+  const line = JSON.stringify({ type: "custom-title", customTitle: name, sessionId: id });
+  if (windows) {
+    const script = [
+      `$f = [IO.Path]::Combine($env:USERPROFILE, '.claude', 'projects', ${psQuote(dir)}, ${psQuote(`${id}.jsonl`)})`,
+      "if (-not [IO.File]::Exists($f)) { exit 2 }",
+      "$s = [IO.File]::Open($f, 'Open', 'ReadWrite', 'ReadWrite, Delete')",
+      "try { $nl = $true; if ($s.Length -gt 0) { [void]$s.Seek(-1, 'End'); $nl = $s.ReadByte() -eq 10 }; [void]$s.Seek(0, 'End'); " +
+        `$text = $(if ($nl) { '' } else { [string][char]10 }) + ${psQuote(line)} + [char]10; ` +
+        "$b = [Text.UTF8Encoding]::new($false).GetBytes($text); $s.Write($b, 0, $b.Length) } finally { $s.Close() }",
+    ].join("; ");
+    return { command: "powershell", args: ["-NoProfile", "-Command", script] };
+  }
+  const script = 'f="$HOME/.claude/projects/$1/$2.jsonl"; [ -f "$f" ] || exit 2; ' +
+    '[ -s "$f" ] && [ -n "$(tail -c 1 "$f")" ] && printf "\\n" >> "$f"; printf "%s\\n" "$3" >> "$f"';
+  return { command: "sh", args: ["-c", script, "rename", dir, id, line] };
+}
+
+/**
+ * Deletes a session file and its same-named folder: to the Recycle Bin on Windows, for good elsewhere.
+ * Exit 3: the session is open (nothing deleted). Exit 2: no such session file.
+ */
+export function deleteCommand(dir, id, windows) {
+  checkTarget(dir, id);
+  if (windows) {
+    const script = [
+      `$id = ${psQuote(id)}`,
+      "$live = Join-Path $env:USERPROFILE '.claude\\sessions'",
+      psLiveLoop("if ($i.Groups[1].Value -eq $id) { exit 3 } "),
+      `$d = [IO.Path]::Combine($env:USERPROFILE, '.claude', 'projects', ${psQuote(dir)})`,
+      "$file = Join-Path $d ($id + '.jsonl'); $sub = Join-Path $d $id",
+      "if (-not [IO.File]::Exists($file)) { exit 2 }",
+      "Add-Type -AssemblyName Microsoft.VisualBasic",
+      "[Microsoft.VisualBasic.FileIO.FileSystem]::DeleteFile($file, 'OnlyErrorDialogs', 'SendToRecycleBin')",
+      "if ([IO.Directory]::Exists($sub)) { [Microsoft.VisualBasic.FileIO.FileSystem]::DeleteDirectory($sub, 'OnlyErrorDialogs', 'SendToRecycleBin') }",
+    ].join("; ");
+    return { command: "powershell", args: ["-NoProfile", "-Command", script] };
+  }
+  const script = shLiveLoop('[ "$id" = "$2" ] && exit 3') +
+    'd="$HOME/.claude/projects/$1"; [ -f "$d/$2.jsonl" ] || exit 2; rm -f "$d/$2.jsonl" && rm -rf "$d/$2"';
+  return { command: "sh", args: ["-c", script, "delete", dir, id] };
+}
+
+export function actionError(code, stderr) {
+  if (code === 2) return "세션 파일이 없어요";
+  if (code === 3) return "열려 있는 세션은 지울 수 없어요";
+  return String(stderr ?? "").split(/\r?\n/).map(l => l.trim()).find(Boolean) || "실패했어요";
+}
+
+export function deleteConfirmText(title, remote) {
+  return remote ? `"${title}" 세션을 완전히 지울까요? 되돌릴 수 없어요.` : `"${title}" 세션을 휴지통으로 보낼까요?`;
 }
