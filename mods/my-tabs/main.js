@@ -28,6 +28,7 @@ export default class Tabs extends View {
     this.pressed = null;
     this.panels = JSON.parse(localStorage.getItem("panels") ?? "{}");
     this.busy = new Set();
+    this.panelsOpen = localStorage.getItem("my-tabs.panelsOpen") === "1"; // panel buttons hidden until < opens them
   }
 
   // The side panel is remembered per space: switching shows that space's choice
@@ -195,12 +196,18 @@ export default class Tabs extends View {
       .on_scroll_wheel(e => { if (Math.abs(e.delta.y) >= 1) run(e.delta.y > 0 ? "tab.prev" : "tab.next"); })
       .child(h_flex().id("tab-scroll").flex_1().min_w(0).h_full().items_center().gap(3).overflow_x_scrollbar().children(shown.flatMap(item)))
       .child(button("tab-new", "+", () => openOverlay({ mod: "my-new-menu", kind: "popup", width: 250, height: 543 })))
-      .when(enabled.includes("files"), el => el.child(panelButton("files", "Files", "mods/files/file.svg")))
-      .when(enabled.includes("changes"), el => el.child(panelButton("changes", "Changes", "mods/changes/changes.svg")))
-      .when(enabled.includes("github"), el => el.child(panelButton("github", "GitHub", "mods/my-github/github.svg")))
-      .when(enabled.includes("plugins"), el => el.child(panelButton("plugins", "Plugins", "mods/my-plugins/plugins.svg")))
-      .when(enabled.includes("sessions"), el => el.child(panelButton("sessions", "Sessions", "mods/my-sessions/sessions.svg")))
-      .when(enabled.includes("tasks"), el => el.child(panelButton("tasks", "Tasks", "mods/my-tasks/tasks.svg")))
+      .when(this.panelsOpen && enabled.includes("files"), el => el.child(panelButton("files", "Files", "mods/files/file.svg")))
+      .when(this.panelsOpen && enabled.includes("changes"), el => el.child(panelButton("changes", "Changes", "mods/changes/changes.svg")))
+      .when(this.panelsOpen && enabled.includes("github"), el => el.child(panelButton("github", "GitHub", "mods/my-github/github.svg")))
+      .when(this.panelsOpen && enabled.includes("plugins"), el => el.child(panelButton("plugins", "Plugins", "mods/my-plugins/plugins.svg")))
+      .when(this.panelsOpen && enabled.includes("sessions"), el => el.child(panelButton("sessions", "Sessions", "mods/my-sessions/sessions.svg")))
+      .when(this.panelsOpen && enabled.includes("tasks"), el => el.child(panelButton("tasks", "Tasks", "mods/my-tasks/tasks.svg")))
+      // < opens the panel buttons to its left, > folds them away again. Remembered.
+      .child(button("panels-toggle", this.panelsOpen ? ">" : "<", (_e, cx) => {
+        this.panelsOpen = !this.panelsOpen;
+        localStorage.setItem("my-tabs.panelsOpen", this.panelsOpen ? "1" : "0");
+        cx.notify();
+      }))
       .when(w?.buttons, el => el.child(button("minimize", w.platform === "windows" ? svg("mods/my-tabs/win-min.svg").size(16) : "−", () => run("window.minimize")))
         .child(button("maximize", w.platform === "windows" ? svg(`mods/my-tabs/${w.maximized ? "win-restore" : "win-max"}.svg`).size(16) : "□", () => run("window.maximize")))
         .child(button("close-window", w.platform === "windows" ? svg("mods/my-tabs/win-close.svg").size(16) : svg("mods/pane/close.svg").size(13), () => run("window.close"))));
