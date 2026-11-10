@@ -45,7 +45,7 @@ test("worktreePaths", () => {
 test("sessionLines: tab-separated rows with JSON tokens", () => {
   const line = ["FILE", "C--r-app", U1, "1700000000", '"C:\\\\r\\\\app"', "", '"제목 \\"하나\\""', '"main"'].join("\t");
   assert.deepEqual(L.sessionLines(`${line}\r\n\r\n`), [
-    { dir: "C--r-app", id: U1, mtime: 1700000000, cwd: "C:\\r\\app", customTitle: "", aiTitle: '제목 "하나"', branch: "main" },
+    { dir: "C--r-app", id: U1, mtime: 1700000000, cwd: "C:\\r\\app", customTitle: "", aiTitle: '제목 "하나"', branch: "main", agentColor: "" },
   ]);
   const badToken = ["FILE", "d", U1, "1", '"/r"', '"broken', '"ok"', ""].join("\t");
   assert.equal(L.sessionLines(badToken)[0].customTitle, "");
@@ -55,10 +55,23 @@ test("sessionLines: tab-separated rows with JSON tokens", () => {
   assert.deepEqual(L.sessionLines("something else\n"), []);
 });
 
+test("sessionLines: the ninth field is the agent color", () => {
+  const f = ["FILE", "d", U1, "1", '"/r"', "", "", '"main"'];
+  assert.equal(L.sessionLines([...f, '"purple"'].join("\t"))[0].agentColor, "purple");
+  assert.equal(L.sessionLines(f.join("\t"))[0].agentColor, "");
+});
+
+test("toSessions color: only the eight colors count", () => {
+  const base = { dir: "-r-app", id: U1, mtime: 5, cwd: "/r/app", branch: "", customTitle: "", aiTitle: "" };
+  const color = c => L.toSessions([{ ...base, agentColor: c }])[0].color;
+  assert.equal(color("purple"), "purple");
+  for (const c of ["default", "", "weird", undefined]) assert.equal(color(c), null);
+});
+
 test("toSessions: title order, start folder, UUID ids only", () => {
   const base = { dir: "-r-app", id: U1, mtime: 5, cwd: "/r/app/sub", branch: "main" };
   const [a] = L.toSessions([{ ...base, customTitle: "내 이름", aiTitle: "자동" }]);
-  assert.deepEqual(a, { id: U1, title: "내 이름", mtime: 5, branch: "main", folder: "/r/app", dir: "-r-app" });
+  assert.deepEqual(a, { id: U1, title: "내 이름", mtime: 5, branch: "main", folder: "/r/app", dir: "-r-app", color: null });
   assert.equal(L.toSessions([{ ...base, customTitle: "", aiTitle: "자동\n제목" }])[0].title, "자동 제목");
   assert.equal(L.toSessions([{ ...base, customTitle: "", aiTitle: "" }])[0].title, "(제목 없음)");
   assert.deepEqual(L.toSessions([{ ...base, id: "../evil", customTitle: "", aiTitle: "" }]), []);
@@ -244,6 +257,21 @@ test("renameCommand: checked inputs, the record line, both shells", () => {
   assert.throws(() => L.renameCommand("-r-app", U1, " \n ", false), /이름이 비어 있어요/);
 });
 
+test("colorCommand: checked inputs, the record line, both shells", () => {
+  const rec = c => JSON.stringify({ type: "agent-color", agentColor: c, sessionId: U1 });
+  const sh = L.colorCommand("-r-app", U1, "purple", false);
+  assert.equal(sh.command, "sh");
+  assert.deepEqual(sh.args.slice(2), ["color", "-r-app", U1, rec("purple")]);
+  assert.deepEqual(L.colorCommand("-r-app", U1, "default", false).args.slice(2), ["color", "-r-app", U1, rec("default")]);
+  const ps = L.colorCommand("C--r-app", U1, "cyan", true);
+  assert.equal(ps.command, "powershell");
+  assert.ok(ps.args[2].includes(L.psQuote(rec("cyan"))));
+  assert.throws(() => L.colorCommand("-r-app", U1, "magenta", false), /알 수 없는 색이에요/);
+  assert.throws(() => L.colorCommand("-r-app", U1, "", false), /알 수 없는 색이에요/);
+  assert.throws(() => L.colorCommand("../x", U1, "red", false), /세션을 가리키지 못했어요/);
+  assert.throws(() => L.colorCommand("-r-app", "nope", "red", true), /세션을 가리키지 못했어요/);
+});
+
 test("deleteCommand: checked inputs, both shells", () => {
   const sh = L.deleteCommand("-r-app", U1, false);
   assert.equal(sh.command, "sh");
@@ -305,6 +333,34 @@ for (const windows of [true, false]) {
     assert.ok(!existsSync(file(U2)));
     assert.ok(!existsSync(pjoin(store, U2)));
     assert.equal(run(L.deleteCommand("C--r-app", U2, windows)).status, 2);
+  });
+}
+
+for (const windows of [true, false]) {
+  const shell = windows ? "powershell" : "sh";
+  const runs = !spawnSync(shell, windows ? ["-NoProfile", "-Command", "exit 0"] : ["-c", "exit 0"]).error;
+  test(`colorCommand runs and sessionsCommand reads the color back (${shell})`, { skip: !runs || (windows && process.platform !== "win32") }, () => {
+    const home = pjoin(mkdtempSync(pjoin(tmpdir(), "session-color-")), "it's 홈");
+    const store = pjoin(home, ".claude", "projects", "C--r-app");
+    mkdirSync(store, { recursive: true });
+    const env = { ...process.env, USERPROFILE: home, HOME: windows ? home : home.replaceAll("\\", "/") };
+    const run = c => spawnSync(c.command, c.args, { encoding: "utf8", env });
+    writeFileSync(pjoin(store, `${U1}.jsonl`), JSON.stringify({ cwd: "C:\\r\\app" })); // no final newline
+    const read = () => {
+      const rows = L.sessionLines(run(L.sessionsCommand(["C--r-app"], windows)).stdout);
+      return [rows[0].agentColor, L.toSessions(rows)[0].color];
+    };
+    assert.deepEqual(read(), ["", null]);
+    const r1 = run(L.colorCommand("C--r-app", U1, "purple", windows));
+    assert.equal(r1.status, 0, r1.stderr);
+    assert.deepEqual(read(), ["purple", "purple"]);
+    const r2 = run(L.colorCommand("C--r-app", U1, "default", windows));
+    assert.equal(r2.status, 0, r2.stderr);
+    assert.deepEqual(read(), ["default", null]);
+    const lines = readFileSync(pjoin(store, `${U1}.jsonl`), "utf8").split("\n");
+    assert.equal(lines.length, 4);
+    assert.deepEqual(JSON.parse(lines[1]), { type: "agent-color", agentColor: "purple", sessionId: U1 });
+    assert.equal(run(L.colorCommand("C--r-app", U3, "red", windows)).status, 2);
   });
 }
 

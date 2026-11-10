@@ -3,9 +3,10 @@
 import { View, div } from "gpui-kit";
 import { v_flex, h_flex, InputState, Input } from "gpui-base";
 import { spaces, panes, focused, exec, run, notify, theme, layout, window } from "herdr";
-import { encodeProject, worktreePaths, sessionLines, liveIds, toSessions, pickSessions, isUnder, sessionMeta, tabTitle, emptyText, sessionsCommand, renameCommand, deleteCommand, actionError, deleteConfirmText } from "./logic.js";
+import { encodeProject, worktreePaths, sessionLines, liveIds, toSessions, pickSessions, isUnder, sessionMeta, tabTitle, emptyText, sessionsCommand, renameCommand, colorCommand, deleteCommand, COLORS, actionError, deleteConfirmText } from "./logic.js";
 
 const REFRESH_MS = 30000, SHOW_LIMIT = 100;
+const HEX = { red: "#e5534b", blue: "#539bf5", green: "#57ab5a", yellow: "#c69026", purple: "#b083f0", orange: "#e0823d", pink: "#e275ad", cyan: "#39c5cf" };
 
 import { followedCwd } from "./where.js";
 
@@ -43,7 +44,7 @@ export default class Sessions extends View {
   init(_props, cx) {
     this.scope = "all"; this.context = null; this.data = null; this.error = null;
     this.loading = false; this.again = false; this.wasShown = this.visible();
-    this.act = null; // the ⋯ box: { id, dir, title, step: "menu" | "rename" | "confirm" | "running" | "failed", kind, error }
+    this.act = null; // the ⋯ box: { id, dir, title, step: "menu" | "rename" | "color" | "confirm" | "running" | "failed", kind, error }
     this.nameInput = InputState.new({ placeholder: "세션 이름" });
     this.nameInput.on("submit", (_e, cx) => { this.runAct("rename", cx); cx.notify(); });
     if (this.wasShown) this.refresh(cx);
@@ -98,25 +99,32 @@ export default class Sessions extends View {
 
   toggleMenu(s) {
     if (this.act?.step === "running") return;
-    this.act = this.act?.id === s.id ? null : { id: s.id, dir: s.dir, title: s.title, step: "menu", kind: null, error: null };
+    this.act = this.act?.id === s.id ? null : { id: s.id, dir: s.dir, title: s.title, color: s.color, step: "menu", kind: null, error: null };
   }
 
   startRename() {
     const a = this.act;
-    if (!a) return;
+    if (!a || this.isLive(a.id)) return;
     a.step = "rename";
     this.nameInput.set_value(a.title === "(제목 없음)" ? "" : a.title);
     this.nameInput.focus();
   }
 
-  // Runs the rename or delete where the list was read; then reads the list again either way.
-  runAct(kind, cx) {
+  isLive(id) { return Boolean(this.data?.live.has(String(id).toLowerCase())); }
+
+  // Runs the rename, color or delete where the list was read; then reads the list again either way.
+  runAct(kind, cx, value) {
     const a = this.act, context = this.context;
     if (!a || !context || a.step === "running") return;
+    if (kind !== "delete" && this.isLive(a.id)) return;
     if (kind === "rename" && (a.step !== "rename" || !this.nameInput.value().trim())) return;
+    if (kind === "color" && a.step !== "color") return;
     const windows = !context.on && window()?.platform === "windows";
     let c;
-    try { c = kind === "rename" ? renameCommand(a.dir, a.id, this.nameInput.value(), windows) : deleteCommand(a.dir, a.id, windows); }
+    try {
+      c = kind === "rename" ? renameCommand(a.dir, a.id, this.nameInput.value(), windows)
+        : kind === "color" ? colorCommand(a.dir, a.id, value, windows) : deleteCommand(a.dir, a.id, windows);
+    }
     catch (e) { a.step = "failed"; a.error = String(e?.message ?? e); return; }
     a.step = "running"; a.kind = kind;
     cx.spawn(async cx => {
@@ -127,7 +135,7 @@ export default class Sessions extends View {
       if (this.act === a) {
         if (error) { a.step = "failed"; a.error = error; } else this.act = null;
       } else if (error) {
-        notify({ title: kind === "rename" ? "세션 이름을 바꾸지 못했어요" : "세션을 지우지 못했어요", body: error, level: "error", timeout: 5000 });
+        notify({ title: kind === "rename" ? "세션 이름을 바꾸지 못했어요" : kind === "color" ? "세션 색을 바꾸지 못했어요" : "세션을 지우지 못했어요", body: error, level: "error", timeout: 5000 });
       }
       if (this.context === context) this.refresh(cx);
       cx.notify();
@@ -145,9 +153,25 @@ export default class Sessions extends View {
         .when(enabled, el => el.cursor_pointer().hover(st => st.bg(t.hover)).on_click((_e, cx) => { onClick(); cx.notify(); }))
         .child(label);
       return [h_flex().flex_none().justify_end().px(8).mb(4)
-        .child(v_flex().id(`session-menu-${s.id}`).w(132).p(4).gap(1).rounded(7).border_1().border_color(t.border).bg(t.background)
-          .child(item("session-rename", "수정", () => this.startRename()))
-          .child(live ? item("session-delete", "삭제 (열려 있음)", () => {}, false) : item("session-delete", "삭제", () => { a.step = "confirm"; })))];
+        .child(v_flex().id(`session-menu-${s.id}`).w(live ? 220 : 132).p(4).gap(1).rounded(7).border_1().border_color(t.border).bg(t.background)
+          .child(item("session-rename", "수정", () => this.startRename(), !live))
+          .child(item("session-color", "색상", () => { a.step = "color"; }, !live))
+          .child(item("session-delete", "삭제", () => { a.step = "confirm"; }, !live))
+          .when(live, el => el.child(div().px(10).py(4).text_size(11).text_color(t.dim).child("열려 있는 세션은 Claude에서 /rename, /color로 바꿔 주세요"))))];
+    }
+    if (a.step === "color") {
+      const current = s.color ?? "default";
+      const pick = color => { if (color === current) this.act = null; else return cx => this.runAct("color", cx, color); };
+      const ring = on => on ? t.foreground : t.border;
+      return [h_flex().flex_none().justify_end().px(8).mb(4)
+        .child(h_flex().id(`session-colors-${s.id}`).p(6).gap(6).items_center().rounded(7).border_1().border_color(t.border).bg(t.background)
+          .children(COLORS.map(color => div().id(`session-color-${color}`).w(16).h(16).flex_none().rounded(8).cursor_pointer()
+            .bg(HEX[color]).border_2().border_color(ring(color === current))
+            .on_click((_e, cx) => { const go = pick(color); if (go) go(cx); cx.notify(); })))
+          .child(div().id("session-color-default").h(16).px(4).flex_none().flex().items_center().rounded(4).cursor_pointer().text_size(12)
+            .text_color(t.foreground).border_1().border_color(ring(current === "default")).hover(st => st.bg(t.hover))
+            .on_click((_e, cx) => { const go = pick("default"); if (go) go(cx); cx.notify(); })
+            .child("기본")))];
     }
     const box = h_flex().id(`session-act-${s.id}`).flex_none().mx(8).mb(4).px(8).py(6).gap(6).items_center().flex_wrap()
       .rounded(7).bg(t.hover).text_size(12);
@@ -155,7 +179,7 @@ export default class Sessions extends View {
       .child(div().child(deleteConfirmText(a.title, Boolean(this.context?.on) || window()?.platform !== "windows")))
       .child(button("session-delete-ok", "삭제", cx => this.runAct("delete", cx)))
       .child(button("session-act-close", "취소", () => { this.act = null; }))];
-    if (a.step === "running") return [box.child(div().text_color(t.dim).child("지우는 중…"))];
+    if (a.step === "running") return [box.child(div().text_color(t.dim).child(a.kind === "color" ? "색 바꾸는 중…" : "지우는 중…"))];
     return [box.child(div().flex_1().min_w(0).text_color(t.ansi1).child(`⚠ ${a.error}`)).child(button("session-act-close", "닫기", () => { this.act = null; }))];
   }
 
@@ -210,8 +234,9 @@ export default class Sessions extends View {
         .when(Boolean(this.error && d), el => el.child(div().px(8).py(4).text_size(12).text_color(t.ansi1).child(`⚠ ${this.error}`)))
         .children(picked.items.flatMap(s => {
           const live = d.live.has(s.id.toLowerCase());
-          return [v_flex().id(`session-${s.id}`).flex_none().px(8).py(6).gap(3).rounded(7).cursor_pointer().hover(st => st.bg(t.hover))
+          return [v_flex().id(`session-${s.id}`).flex_none().px(8).py(6).gap(3).rounded(7).cursor_pointer().hover(st => st.bg(t.hover)).relative()
             .on_click(e => { if (e.click_count === 1 && !this.renaming(s)) this.open(s); })
+            .when(Boolean(s.color), el => el.child(div().absolute().left(0).top(0).bottom(0).w(3).rounded(2).bg(HEX[s.color])))
             .child(h_flex().min_w(0).gap(6).items_center()
               .when(live, el => el.child(div().flex_none().w(8).h(8).rounded(4).bg(t.ansi2)))
               .child(this.titleCell(s, t))

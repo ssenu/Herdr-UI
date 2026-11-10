@@ -78,10 +78,12 @@ export function sessionLines(stdout) {
     if (f[0] !== "FILE" || f.length < 8) continue;
     const cwd = jsonToken(f[4]), mtime = Number(f[3]);
     if (!cwd || f[3].trim() === "" || !Number.isFinite(mtime)) continue;
-    rows.push({ dir: f[1], id: f[2], mtime, cwd, customTitle: jsonToken(f[5]), aiTitle: jsonToken(f[6]), branch: jsonToken(f[7]) });
+    rows.push({ dir: f[1], id: f[2], mtime, cwd, customTitle: jsonToken(f[5]), aiTitle: jsonToken(f[6]), branch: jsonToken(f[7]), agentColor: jsonToken(f[8] ?? "") });
   }
   return rows;
 }
+
+export const COLORS = ["red", "blue", "green", "yellow", "purple", "orange", "pink", "cyan"];
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -109,6 +111,7 @@ export function toSessions(rows) {
     branch: r.branch,
     folder: startFolder(r.dir, r.cwd),
     dir: r.dir,
+    color: COLORS.includes(r.agentColor) ? r.agentColor : null,
   })).filter(s => usableFolder(s.folder));
 }
 
@@ -220,8 +223,8 @@ export function sessionsCommand(prefixes, windows) {
         "} finally { $s.Close() }; " +
         `$m = [regex]::Match($head, ${token("cwd")}); if (-not $m.Success) { continue }; ` +
         "$t = [DateTimeOffset]::new($f.LastWriteTimeUtc).ToUnixTimeSeconds(); " +
-        `$custom = Last $tail ${token("customTitle")}; $ai = Last $tail ${token("aiTitle")}; $branch = Last $tail ${token("gitBranch")}; ` +
-        "\"FILE`t$($f.Directory.Name)`t$($f.BaseName)`t$t`t$($m.Groups[1].Value)`t$custom`t$ai`t$branch\" " +
+        `$custom = Last $tail ${token("customTitle")}; $ai = Last $tail ${token("aiTitle")}; $branch = Last $tail ${token("gitBranch")}; $color = Last $tail ${token("agentColor")}; ` +
+        "\"FILE`t$($f.Directory.Name)`t$($f.BaseName)`t$t`t$($m.Groups[1].Value)`t$custom`t$ai`t$branch`t$color\" " +
         "} catch {} }",
     ].join("; ");
     return { command: "powershell", args: ["-NoProfile", "-Command", script] };
@@ -240,8 +243,9 @@ export function sessionsCommand(prefixes, windows) {
     `custom=$(tail -c ${TAIL_BYTES} "$f" | ${grab("customTitle", "tail")}); ` +
     `ai=$(tail -c ${TAIL_BYTES} "$f" | ${grab("aiTitle", "tail")}); ` +
     `branch=$(tail -c ${TAIL_BYTES} "$f" | ${grab("gitBranch", "tail")}); ` +
+    `color=$(tail -c ${TAIL_BYTES} "$f" | ${grab("agentColor", "tail")}); ` +
     'rest=${f#./}; dir=${rest%%/*}; id=${f##*/}; id=${id%.jsonl}; ' +
-    'printf "FILE\\t%s\\t%s\\t%s\\t%s\\t%s\\t%s\\t%s\\n" "$dir" "$id" "$m" "$cwd" "$custom" "$ai" "$branch"; done';
+    'printf "FILE\\t%s\\t%s\\t%s\\t%s\\t%s\\t%s\\t%s\\t%s\\n" "$dir" "$id" "$m" "$cwd" "$custom" "$ai" "$branch" "$color"; done';
   return { command: "sh", args: ["-c", script, "sessions", ...prefixes] };
 }
 
@@ -249,15 +253,11 @@ function checkTarget(dir, id) {
   if (!STORE.test(String(dir ?? "")) || !UUID.test(String(id ?? ""))) throw new Error("세션을 가리키지 못했어요");
 }
 
-/**
- * Renames a session the way Claude Code's /rename does: one custom-title record appended to its file.
- * A file not ending in a newline gets one first. Exit 2: no such session file.
- */
-export function renameCommand(dir, id, title, windows) {
+// Appends one JSON record line to a session file (Claude Code's own way of changing a title or color).
+// A file not ending in a newline gets one first. Exit 2: no such session file.
+function appendRecordCommand(dir, id, record, windows, verb) {
   checkTarget(dir, id);
-  const name = String(title ?? "").replace(/\s+/g, " ").trim();
-  if (!name) throw new Error("이름이 비어 있어요");
-  const line = JSON.stringify({ type: "custom-title", customTitle: name, sessionId: id });
+  const line = JSON.stringify(record);
   if (windows) {
     const script = [
       "$ErrorActionPreference = 'Stop'",
@@ -276,7 +276,22 @@ export function renameCommand(dir, id, title, windows) {
   }
   const script = 'f="$HOME/.claude/projects/$1/$2.jsonl"; [ -f "$f" ] || exit 2; ' +
     '[ -s "$f" ] && [ -n "$(tail -c 1 "$f")" ] && printf "\\n" >> "$f"; printf "%s\\n" "$3" >> "$f"';
-  return { command: "sh", args: ["-c", script, "rename", dir, id, line] };
+  return { command: "sh", args: ["-c", script, verb, dir, id, line] };
+}
+
+/** Renames a session the way Claude Code's /rename does: one custom-title record appended to its file. */
+export function renameCommand(dir, id, title, windows) {
+  checkTarget(dir, id);
+  const name = String(title ?? "").replace(/\s+/g, " ").trim();
+  if (!name) throw new Error("이름이 비어 있어요");
+  return appendRecordCommand(dir, id, { type: "custom-title", customTitle: name, sessionId: id }, windows, "rename");
+}
+
+/** Colors a session the way Claude Code's /color does: one agent-color record. "default" clears the color. */
+export function colorCommand(dir, id, color, windows) {
+  checkTarget(dir, id);
+  if (color !== "default" && !COLORS.includes(color)) throw new Error("알 수 없는 색이에요");
+  return appendRecordCommand(dir, id, { type: "agent-color", agentColor: color, sessionId: id }, windows, "color");
 }
 
 /**
