@@ -196,18 +196,18 @@ export default class Tabs extends View {
       .on_scroll_wheel(e => { if (Math.abs(e.delta.y) >= 1) run(e.delta.y > 0 ? "tab.prev" : "tab.next"); })
       .child(h_flex().id("tab-scroll").flex_1().min_w(0).h_full().items_center().gap(3).overflow_x_scrollbar().children(shown.flatMap(item)))
       .child(button("tab-new", "+", () => openOverlay({ mod: "my-new-menu", kind: "popup", width: 250, height: 543 })))
+      // Right of +: < opens the panel buttons after it, > folds them away again. Remembered.
+      .child(button("panels-toggle", svg(`mods/my-tabs/chevron-${this.panelsOpen ? "right" : "left"}.svg`).size(15), (_e, cx) => {
+        this.panelsOpen = !this.panelsOpen;
+        localStorage.setItem("my-tabs.panelsOpen", this.panelsOpen ? "1" : "0");
+        cx.notify();
+      }))
       .when(this.panelsOpen && enabled.includes("files"), el => el.child(panelButton("files", "Files", "mods/files/file.svg")))
       .when(this.panelsOpen && enabled.includes("changes"), el => el.child(panelButton("changes", "Changes", "mods/changes/changes.svg")))
       .when(this.panelsOpen && enabled.includes("github"), el => el.child(panelButton("github", "GitHub", "mods/my-github/github.svg")))
       .when(this.panelsOpen && enabled.includes("plugins"), el => el.child(panelButton("plugins", "Plugins", "mods/my-plugins/plugins.svg")))
       .when(this.panelsOpen && enabled.includes("sessions"), el => el.child(panelButton("sessions", "Sessions", "mods/my-sessions/sessions.svg")))
       .when(this.panelsOpen && enabled.includes("tasks"), el => el.child(panelButton("tasks", "Tasks", "mods/my-tasks/tasks.svg")))
-      // < opens the panel buttons to its left, > folds them away again. Remembered.
-      .child(button("panels-toggle", this.panelsOpen ? ">" : "<", (_e, cx) => {
-        this.panelsOpen = !this.panelsOpen;
-        localStorage.setItem("my-tabs.panelsOpen", this.panelsOpen ? "1" : "0");
-        cx.notify();
-      }))
       .when(w?.buttons, el => el.child(button("minimize", w.platform === "windows" ? svg("mods/my-tabs/win-min.svg").size(16) : "−", () => run("window.minimize")))
         .child(button("maximize", w.platform === "windows" ? svg(`mods/my-tabs/${w.maximized ? "win-restore" : "win-max"}.svg`).size(16) : "□", () => run("window.maximize")))
         .child(button("close-window", w.platform === "windows" ? svg("mods/my-tabs/win-close.svg").size(16) : svg("mods/pane/close.svg").size(13), () => run("window.close"))));
