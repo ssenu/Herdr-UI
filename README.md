@@ -10,7 +10,7 @@
 - **Plugins 패널**: Claude Code·Codex가 지금 폴더에서 보는 MCP 서버와 스킬 목록
 - **Sessions 패널**: 지금 저장소의 Claude Code 세션 목록. 누르면 새 탭에서 다시 열기, 열려 있는 세션은 초록 점
 - **Task 패널**: 할 일 목록(이 PC에 저장, 원하면 Google Tasks 연동) 보기·추가·완료·편집·삭제, 하위 할 일과 순서 바꾸기
-- **탭 바**: 패널 버튼(GitHub · Plugin · Session · Task), `+` 메뉴의 파일 뷰어, 스페이스별로 기억하는 패널
+- **탭 바**: 패널 버튼(GitHub · Plugins · Sessions · Tasks), `+` 메뉴의 파일 뷰어, 스페이스별로 기억하는 패널
 - **탭을 끌어 분할하기**: 탭을 화면 가장자리에 놓으면 분할, 옮긴 칸은 탭 바에 칩으로 남음
 - **하단 바**: 이 PC의 CPU·RAM·GPU와 ccusage 사용량(오늘 · 5시간 구간 · 남은 시간), 마우스를 올리면 작은 대시보드
 
@@ -31,12 +31,13 @@
 | `my-status-dash` | 하단 바 수치에 마우스를 올리면 뜨는 최근 5분 그래프 |
 | `my-usage-dash` | 하단 바 사용량에 마우스를 올리면 뜨는 사용량 대시보드 |
 | `my-tab-drag` | 탭을 끌어 작업 화면의 가장자리에 놓으면 분할 |
-| `my-tabs` | 기본 탭 바의 복제본. Files · Changes 옆에 GitHub · Plugin · Session · Task 버튼 추가 |
+| `my-tabs` | 기본 탭 바의 복제본. Files · Changes 옆에 GitHub · Plugins · Sessions · Tasks 버튼 추가 |
 
 ## 기능
 
 ### Files 패널 (`my-files`)
 
+- **새로고침**: 헤더의 **⟳** 로 지금 폴더(또는 파일)를 바로 다시 읽습니다.
 - **편집과 저장**: 로컬 텍스트 파일을 패널에서 바로 고치고 **Ctrl+S**로 저장합니다.
   - 저장하지 않은 파일은 목록과 헤더에 **●** 가 붙습니다. 다른 파일이나 스페이스로 갔다 와도 고친 내용이 남아 있습니다(앱을 끄면 사라짐).
   - 다른 곳(에이전트, git 등)에서 파일이 바뀌면, 고치지 않은 파일은 화면이 자동으로 새로고침되고, 고친 파일은 **"디스크의 파일이 바뀌었어요"** 표시줄이 뜹니다. [내 것으로 덮어쓰기] / [디스크 버전 불러오기] 중 고릅니다.
@@ -80,7 +81,7 @@
 
 ### Plugins 패널 (`my-plugins`)
 
-- 탭 바의 **Plugin** 버튼으로 엽니다. 포커스된 칸의 폴더에서 에이전트가 쓰는 **MCP 서버**와 **스킬**을 보여 줍니다. 읽기만 하고 아무것도 바꾸지 않습니다.
+- 탭 바의 **Plugins** 버튼으로 엽니다. 포커스된 칸의 폴더에서 에이전트가 쓰는 **MCP 서버**와 **스킬**을 보여 줍니다. 읽기만 하고 아무것도 바꾸지 않습니다.
 - 헤더의 **[Claude] [Codex]**: 포커스된 칸이 Codex면 Codex, 아니면 Claude가 자동으로 골라집니다. 직접 눌러 바꿀 수 있습니다(다른 칸으로 가면 다시 자동).
 - **[MCP] [Skills]** 탭. 출처별로 묶어 보여 줍니다.
 
@@ -98,7 +99,7 @@
 
 ### Sessions 패널 (`my-sessions`)
 
-- 탭 바의 **Session** 버튼으로 엽니다. 포커스된 칸의 저장소에서 시작한 Claude Code 세션을 최근 순으로 보여 줍니다(최대 100개).
+- 탭 바의 **Sessions** 버튼으로 엽니다. 포커스된 칸의 저장소에서 시작한 Claude Code 세션을 최근 순으로 보여 줍니다(최대 100개).
 - **[전체]**: 저장소 루트와 하위 폴더, git worktree에서 시작한 세션. **[지금 폴더]**: 포커스된 칸의 폴더에서 시작한 세션만. 칩을 누르면 다시 읽지 않고 바로 바뀝니다.
 - 행에는 세션 제목(직접 붙인 이름 → 자동 제목)과 `3시간 전 · main · mods/x`(시간 · 브랜치 · 폴더)가 보입니다. 저장소 루트에서 시작한 세션은 폴더를 적지 않습니다.
 - 이미 열려 있는 세션은 제목 앞에 **초록 점**이 붙습니다. 이 머신의 어디서 열었든(Herdr 밖 포함) 표시됩니다. 눌러도 지금 탭으로 이동하지 않고 새 탭으로 열리니, 같은 세션을 두 곳에서 쓰지 않도록 조심하세요.
@@ -109,7 +110,7 @@
 
 ### Task 패널 (`my-tasks`)
 
-- 탭 바의 **Task** 버튼으로 엽니다. 할 일 목록을 보여 주고, 패널에서 바로 고칩니다.
+- 탭 바의 **Tasks** 버튼으로 엽니다. 할 일 목록을 보여 주고, 패널에서 바로 고칩니다.
 - **모드가 두 가지**이고, 헤더 오른쪽의 **[로컬] [Google]** 버튼으로 바꿉니다.
   - **로컬**(기본): 설정 없이 바로 씁니다. 할 일은 이 PC의 `~\.config\herdr-app\my-tasks\local.json` 에 저장됩니다.
   - **Google**: 휴대폰 등에서 쓰는 Google Tasks와 같은 목록을 봅니다. 아래 "Google 모드 준비"가 한 번 필요합니다. **[로컬]** 로 돌아가도 로그인은 남습니다.
@@ -197,12 +198,12 @@ mod와 레이아웃은 저장하면 바로 적용되므로 앱을 다시 켤 필
 |---|---|---|
 | **하단 바** (시스템 모니터 + 사용량) | `my-status`, `my-status-dash`, `my-usage-dash` | `"mod": "workspace-status"` → `"my-status"` |
 | **Files 패널** (+ 탭 바에 드롭해 여는 파일 뷰어) | `my-files`, `my-files-drag`, `my-files-open`, `my-viewer` | `"mod": "files"` → `"my-files"` |
-| **탭 바와 패널** (GitHub · Plugins · Sessions · Task, `+` 파일 뷰어, 탭 끌어 분할) | `my-tabs`, `my-new-menu`, `my-tab-drag`, `my-github`, `my-plugins`, `my-sessions`, `my-tasks`, `my-viewer`, `my-files`, `my-files-drag`, `my-files-open` | `"mod": "tabs"` → `"my-tabs"`, `panel-body` 에 github · plugins · sessions · tasks 칸 추가 |
+| **탭 바와 패널** (GitHub · Plugins · Sessions · Tasks, `+` 파일 뷰어, 탭 끌어 분할) | `my-tabs`, `my-new-menu`, `my-tab-drag`, `my-github`, `my-plugins`, `my-sessions`, `my-tasks`, `my-viewer`, `my-files`, `my-files-drag`, `my-files-open` | `"mod": "tabs"` → `"my-tabs"`, `panel-body` 에 github · plugins · sessions · tasks 칸 추가 |
 
 - **하단 바**는 다른 묶음 없이 혼자 동작합니다.
 - **Files 패널**만 넣으면 기본 탭 바를 그대로 쓰므로 패널 버튼과 `+` 메뉴의 파일 뷰어는 없습니다. 파일을 탭 바(창 맨 위)에 끌어 놓으면 뷰어 탭이 열립니다.
 - **탭 바와 패널**이 한 묶음인 이유:
-  - GitHub · Plugin · Session · Task 버튼은 `my-tabs` 에 있고, 버튼은 네 패널이 있다고 보고 항상 보입니다.
+  - GitHub · Plugins · Sessions · Tasks 버튼은 `my-tabs` 에 있고, 버튼은 네 패널이 있다고 보고 항상 보입니다.
   - `+` 메뉴(`my-new-menu`)와 탭 끌기(`my-tab-drag`)도 `my-tabs` 가 엽니다.
   - 뷰어와 `+` 메뉴는 `my-files` 의 아이콘을, 패널의 `⋯` 메뉴와 끌기는 `my-files-open` · `my-files-drag` 를 씁니다. 그래서 `my-files` 폴더는 복사하되, 레이아웃의 Files 칸은 기본 `files` 로 둬도 됩니다.
 - 폴더를 손으로 복사할 때는 **Herdr를 끄고** 복사하거나, 각 폴더의 `mod.json` 을 먼저 넣으세요. 앱이 켜진 상태에서 `mod.json` 없는 새 mod 폴더가 생기면, 앱이 그것을 레이아웃에 칸으로 끼워 넣습니다.
