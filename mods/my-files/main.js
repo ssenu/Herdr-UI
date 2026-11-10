@@ -11,6 +11,7 @@ import { v_flex, h_flex, Editor, EditorState, TextView, InputState, Input } from
 import { spaces, panes, focused, exec, readTextFile, writeTextFile, watchFolder, theme, settings, window, openOverlay, run, notify } from "herdr";
 import { absolutePath, quoteForPrompt, editability, previewText, sameText, isSaveKey, restoreEol, syncDecision, saveFailure, REASONS, isMarkdown, searchPaths, splitPath, segments, indexCommand, indexLines, switchQuery } from "./logic.js";
 import { followedCwd } from "./where.js";
+import { panel, header, chip, button, iconButton, errorLine, note, TOOLBAR_H } from "./ui.js";
 
 // A folder the panel shows instead of following the focused pane (the 바탕화면 button); null follows.
 let pinned = null;
@@ -26,21 +27,21 @@ const key = () => JSON.stringify(location());
 const LANG = { ts: "js", tsx: "js", mts: "js", cts: "js", jsx: "js", mjs: "js", toml: "yaml", jsonc: "json", svelte: "html", vue: "html" };
 const PER_FOLDER = 500, TOTAL = 5000;
 const MAX_INDEXES = 4, RESULT_LIMIT = 200, REMOTE_INDEX_MS = 60000;
-const GONE = "This file is no longer available";
-const UNREADABLE = "Cannot preview this file (binary, too large, or unreadable)";
+const GONE = "이 파일은 더 이상 없어요";
+const UNREADABLE = "미리볼 수 없는 파일이에요 (바이너리이거나 너무 크거나 읽을 수 없어요)";
 
 async function directory(path, on) {
   if (!on && window()?.platform === "windows") {
     // Windows PowerShell otherwise uses the console code page; exec decodes UTF-8.
     // Reparse points keep directory attributes even when dangling; check their target.
     const r = await exec("powershell", ["-NoProfile", "-Command", "[Console]::OutputEncoding = [System.Text.UTF8Encoding]::new($false); & { param($p) @(Get-ChildItem -LiteralPath $p -Force -ErrorAction Stop | Where-Object Name -ne '.git' | Select-Object -First 501 | ForEach-Object { @{ name=$_.Name; dir=($_.PSIsContainer -and (-not ($_.Attributes -band [IO.FileAttributes]::ReparsePoint) -or ($_.Target -and [IO.Directory]::Exists(([IO.Path]::Combine([IO.Path]::GetDirectoryName($_.FullName), $_.Target[0])))))) } }) | ConvertTo-Json -Compress } '" + path.replaceAll("'", "''") + "'"]);
-    if (r.code !== 0) throw new Error(r.stderr || "Cannot list this folder");
+    if (r.code !== 0) throw new Error(r.stderr || "폴더를 읽지 못했어요");
     const result = JSON.parse(r.stdout || "[]");
     return Array.isArray(result) ? result : [result];
   }
   const script = 'n=0; for p in "$1"/* "$1"/.[!.]* "$1"/..?*; do [ -e "$p" ] || [ -L "$p" ] || continue; name=${p##*/}; [ "$name" = .git ] && continue; if [ -d "$p" ]; then kind=d; else kind=f; fi; printf "%s\\0%s\\0" "$kind" "$name"; n=$((n+1)); [ "$n" -gt 500 ] && break; done; test -d "$1"';
   const r = await exec("sh", ["-c", script, "files", path], { on });
-  if (r.code !== 0) throw new Error(r.stderr || "Cannot list this folder");
+  if (r.code !== 0) throw new Error(r.stderr || "폴더를 읽지 못했어요");
   const fields = r.stdout.split("\0"), out = [];
   for (let i = 0; i + 1 < fields.length; i += 2) out.push({ name: fields[i + 1], dir: fields[i] === "d" });
   return out;
@@ -223,7 +224,7 @@ export default class Files extends View {
         const text = await readTextFile(`${root}/${path}`, { on });
         if (this.file !== path || !this.current(context) || this.buffers.has(path)) return;
         if (text === null) { this.fileError = GONE; return; }
-        if (text.includes("\0")) { this.fileError = "Binary file · no text preview"; return; }
+        if (text.includes("\0")) { this.fileError = "바이너리 파일이라 미리볼 수 없어요"; return; }
         this.buffers.set(path, this.makeBuffer(path, text));
       } catch { if (this.file === path && this.current(context)) this.fileError = UNREADABLE; }
       finally { cx.notify(); }
@@ -398,14 +399,9 @@ export default class Files extends View {
 
   // Open with…: stops the press and click so the row neither drags, opens nor toggles.
   openButton(path, dir, t) {
-    return div().id(`open-${path}`).w(20).h(20).flex_none().flex().items_center().justify_center().rounded(5)
-      .text_color(t.dim).hover(s => s.bg(t.selected).text_color(t.foreground))
-      .on_mouse_down("left", (_e, cx) => cx.stop_propagation())
-      .on_click((_e, cx) => {
-        cx.stop_propagation();
-        openOverlay({ mod: "my-files-open", kind: "popup", width: 200, height: 136, props: { path: this.absolute(path), dir } });
-      })
-      .child("⋯");
+    return iconButton(t, `open-${path}`, "⋯", () => {
+      openOverlay({ mod: "my-files-open", kind: "popup", width: 200, height: 136, props: { path: this.absolute(path), dir } });
+    }, { stop: true });
   }
 
   rows(prefix, depth, out, t) {
@@ -448,7 +444,7 @@ export default class Files extends View {
 
   searchBar(t) {
     const index = this.index();
-    return h_flex().h(36).flex_none().px(10).gap(8).items_center().border_b(1).border_color(t.border)
+    return h_flex().h(TOOLBAR_H).flex_none().px(10).gap(8).items_center().border_b(1).border_color(t.border)
       .on_key_down((e, cx) => {
         const n = this.results()?.results.length ?? 0;
         if (e.key === "down" && n) this.at = Math.min(this.at + 1, n - 1);
@@ -459,66 +455,62 @@ export default class Files extends View {
         cx.notify();
       })
       .child(svg("mods/my-files/search.svg").size(14).flex_none().text_color(t.dim))
-      .child(Input.new(this.search).flex_1().h_full().text_size(12.5).text_color(t.foreground))
+      .child(Input.new(this.search).flex_1().h_full().text_size(13).text_color(t.foreground))
       .when(Boolean(index?.building), el => el.child(div().flex_none().text_size(11).text_color(t.dim).child("목록 만드는 중…")));
   }
 
   foundView(t) {
     const index = this.index(), found = this.results(), q = this.query.trim();
-    const note = text => div().p(8).text_size(12).text_color(t.dim).child(text);
     if (found && this.at >= found.results.length) this.at = Math.max(0, found.results.length - 1);
     return v_flex().id("files-found").flex_1().min_h(0).overflow_y_scrollbar().p(6)
-      .when(Boolean(index?.error), el => el.child(div().p(8).text_size(12).text_color(t.ansi1).child(`파일 목록을 만들지 못했어요: ${index.error}`)))
-      .when(Boolean(index?.truncated), el => el.child(note("파일이 너무 많아 처음 50,000개에서만 찾아요")))
+      .when(Boolean(index?.error), el => el.child(errorLine(t, "files-index-error", `파일 목록을 만들지 못했어요: ${index.error}`, { retry: cx => this.ensureIndex(cx) })))
+      .when(Boolean(index?.truncated), el => el.child(note(t, "파일이 너무 많아 처음 50,000개에서만 찾아요")))
       .children(found ? found.results.map((r, i) => this.resultRow(r, i, t)) : [])
-      .when(Boolean(found?.more), el => el.child(note("더 있어요 · 검색어를 더 입력하세요")))
-      .when(Boolean(found) && found.results.length === 0, el => el.child(note(`‘${q}’와 맞는 파일이 없어요`)))
-      .when(!found && !index?.error && !this.context?.cwd, el => el.child(note("No folder")))
-      .when(!found && !index?.error && Boolean(this.context?.cwd) && Boolean(index?.building), el => el.child(note("목록 만드는 중…")));
+      .when(Boolean(found?.more), el => el.child(note(t, "더 있어요 · 검색어를 더 입력하세요")))
+      .when(Boolean(found) && found.results.length === 0, el => el.child(note(t, `‘${q}’와 맞는 파일이 없어요`)))
+      .when(!found && !index?.error && !this.context?.cwd, el => el.child(note(t, "폴더가 없어요")))
+      .when(!found && !index?.error && Boolean(this.context?.cwd) && Boolean(index?.building), el => el.child(note(t, "목록 만드는 중…")));
   }
 
   render(cx) {
     this.syncQuery(cx);
     if (key() !== this.context?.key) this.refresh(cx);
     const t = theme(), file = this.file, buf = file ? this.buffers.get(file) : null;
-    const button = (id, label, onClick) => h_flex().id(id).h(24).px(8).flex_none().items_center().rounded(6).cursor_pointer()
-      .text_size(12).text_color(t.foreground).border_1().border_color(t.border).hover(s => s.bg(t.hover))
-      .on_click((_e, cx) => { onClick(cx); cx.notify(); }).child(label);
     const nano = Boolean(file) && (Boolean(buf && !buf.editable) || this.fileError === UNREADABLE);
     const bar = () => h_flex().h(34).flex_none().px(14).gap(8).items_center().border_b(1).border_color(t.border).text_size(12);
-    const chip = (id, label, on, onClick) => h_flex().id(id).h(24).px(9).flex_none().items_center().rounded(6).cursor_pointer().text_size(12)
-      .bg(on ? t.selected : t.background).text_color(on ? t.foreground : t.muted)
-      .hover(s => s.bg(t.hover)).on_click((_e, cx) => { onClick(cx); cx.notify(); }).child(label);
-    return v_flex().id("files").size_full().min_h(0).rounded(10).overflow_hidden().bg(t.background).border_1().border_color(t.border).text_color(t.foreground).text_size(13)
+    return panel(t, "files")
       .on_mouse_up("left", () => { this.drag = null; })
       // Window-relative panel box (pointer minus its in-panel offset): a drop back on it cancels.
       .on_mouse_move(e => { if (e.local_position) this.origin = { x: e.position.x - e.local_position.x, y: e.position.y - e.local_position.y }; })
       .on_size_change(size => { this.size = size; })
       .on_hover(hovered => { if (!hovered) this.dropOut(); })
-      .child(h_flex().h(42).flex_none().px(14).gap(8).items_center().border_b(1).border_color(t.border)
-        .when(Boolean(file), el => el.child(div().id("files-back").w(20).cursor_pointer().text_color(t.muted).on_click((_e, cx) => { this.show(null); if (this.query.trim()) this.search.focus(); cx.notify(); }).child("←")))
-        .child(div().font_semibold().child("Files"))
-        .when(!file && Boolean(this.desktop), el => el.child(chip("files-desktop", "바탕화면", pinned === this.desktop, cx => this.toggleDesktop(cx))))
-        .child(div().flex_1().min_w(0).truncate().text_right().text_size(12).text_color(t.dim)
-          .child(file ? (buf?.dirty ? `● ${file}` : file) : this.root?.split(/[\\/]/).pop() ?? "")))
+      .child(header(t, {
+        id: "files", title: "Files",
+        back: file ? cx => { this.show(null); if (this.query.trim()) this.search.focus(); } : null,
+        status: file ? (buf?.dirty ? `● ${file}` : file) : this.root?.split(/[\/]/).pop() ?? "",
+        right: !file && this.desktop ? [chip(t, "files-desktop", "바탕화면", pinned === this.desktop, cx => this.toggleDesktop(cx))] : [],
+        refresh: cx => this.refresh(cx), loading: this.loading,
+      }))
       .when(nano, el => el.child(bar().text_color(t.dim)
         .child(div().flex_1().min_w(0).truncate().child(buf?.reason ? REASONS[buf.reason] : "미리보기 불가"))
-        .child(button("files-nano", "nano로 열기", () => this.openInNano(file)))))
+        .child(button(t, "files-nano", "nano로 열기", () => this.openInNano(file)))))
       .when(Boolean(buf?.conflict), el => el.child(bar()
         .child(div().flex_1().min_w(0).truncate().text_color(t.blocked).child("디스크의 파일이 바뀌었어요"))
-        .child(button("files-overwrite", "내 것으로 덮어쓰기", cx => this.overwrite(file, cx)))
-        .child(button("files-load", "디스크 버전 불러오기", cx => this.loadDisk(file, cx)))))
+        .child(button(t, "files-overwrite", "내 것으로 덮어쓰기", cx => this.overwrite(file, cx)))
+        .child(button(t, "files-load", "디스크 버전 불러오기", cx => this.loadDisk(file, cx)))))
       .when(Boolean(buf) && isMarkdown(file), el => el.child(bar()
         .child(div().flex_1())
-        .child(chip("files-view-preview", "보기", buf.view === "preview", () => { buf.view = "preview"; }))
-        .child(chip("files-view-edit", "편집", buf.view === "edit", () => { buf.view = "edit"; }))))
+        .child(chip(t, "files-view-preview", "보기", buf.view === "preview", () => { buf.view = "preview"; }))
+        .child(chip(t, "files-view-edit", "편집", buf.view === "edit", () => { buf.view = "edit"; }))))
       .when(!file, el => el.child(this.searchBar(t)))
+      .when(!file && Boolean(this.error), el => el.child(errorLine(t, "files-error", this.error, { retry: cx => this.refresh(cx), close: () => { this.error = null; } })))
       .when(!file && Boolean(this.query.trim()), el => el.child(this.foundView(t)))
       .when(!file && !this.query.trim(), el => el.child(v_flex().id("files-tree").flex_1().min_h(0).overflow_y_scrollbar().p(6).children(this.rows("", 0, [], t))
-        .when(Boolean(this.error) || !this.entries.get("")?.length, el => el.child(div().p(8).text_size(12).text_color(t.dim).child(this.error || (this.loading ? "Loading files…" : this.root ? "No files" : "No folder"))))
-        .when(this.limited, el => el.child(div().p(8).text_size(11).text_color(t.dim).child("File list limited to 500 entries per folder and 5,000 total")))))
+        .when(!this.error && !this.entries.get("")?.length, el => el.child(note(t, this.loading ? "파일을 불러오는 중…" : this.root ? "파일이 없어요" : "폴더가 없어요")))
+        .when(this.limited, el => el.child(div().p(8).text_size(11).text_color(t.dim).child("목록은 폴더당 500개, 전체 5,000개까지만 보여요")))))
+      .when(Boolean(file) && Boolean(this.fileError), el => el.child(errorLine(t, "files-file-error", this.fileError, { retry: cx => this.show(file, cx) })))
       .when(Boolean(file), el => el.child(!buf
-        ? div().p(12).text_color(t.dim).child(this.fileError || "Loading file…")
+        ? (this.fileError ? div() : note(t, "파일을 여는 중…"))
         : buf.view === "preview"
           ? v_flex().id("files-preview").flex_1().min_h(0).overflow_y_scrollbar().p(14)
             .child(buf.state.value().trim()
