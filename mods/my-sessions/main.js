@@ -134,27 +134,51 @@ export default class Sessions extends View {
     });
   }
 
-  // The box under a row: menu, rename field, delete question, progress or error.
+  // Under a row: the small ⋯ menu at the right, or the delete question, progress or error.
+  // Renaming happens in the row itself (see titleCell).
   actBox(s, live, t, button) {
     const a = this.act;
-    if (!a || a.id !== s.id) return [];
+    if (!a || a.id !== s.id || a.step === "rename" || (a.step === "running" && a.kind === "rename")) return [];
+    if (a.step === "menu") {
+      const item = (id, label, onClick, enabled = true) => div().id(id).px(10).py(4).rounded(5).text_size(12)
+        .text_color(enabled ? t.foreground : t.dim)
+        .when(enabled, el => el.cursor_pointer().hover(st => st.bg(t.hover)).on_click((_e, cx) => { onClick(); cx.notify(); }))
+        .child(label);
+      return [h_flex().flex_none().justify_end().px(8).mb(4)
+        .child(v_flex().id(`session-menu-${s.id}`).w(132).p(4).gap(1).rounded(7).border_1().border_color(t.border).bg(t.background)
+          .child(item("session-rename", "수정", () => this.startRename()))
+          .child(live ? item("session-delete", "삭제 (열려 있음)", () => {}, false) : item("session-delete", "삭제", () => { a.step = "confirm"; })))];
+    }
     const box = h_flex().id(`session-act-${s.id}`).flex_none().mx(8).mb(4).px(8).py(6).gap(6).items_center().flex_wrap()
       .rounded(7).bg(t.hover).text_size(12);
-    const close = button("session-act-close", a.step === "menu" ? "닫기" : "취소", () => { this.act = null; });
-    if (a.step === "menu") return [box
-      .child(button("session-rename", "이름 수정", () => this.startRename()))
-      .child(live ? div().text_color(t.dim).child("열려 있는 세션은 지울 수 없어요") : button("session-delete", "삭제", () => { a.step = "confirm"; }))
-      .child(close)];
-    if (a.step === "rename") return [box
-      .child(Input.new(this.nameInput).flex_1().min_w(120).h(26).text_size(12.5))
-      .child(button("session-rename-ok", "저장", cx => this.runAct("rename", cx)))
-      .child(close)];
     if (a.step === "confirm") return [box
       .child(div().child(deleteConfirmText(a.title, Boolean(this.context?.on) || window()?.platform !== "windows")))
       .child(button("session-delete-ok", "삭제", cx => this.runAct("delete", cx)))
-      .child(close)];
-    if (a.step === "running") return [box.child(div().text_color(t.dim).child(a.kind === "rename" ? "이름 바꾸는 중…" : "지우는 중…"))];
+      .child(button("session-act-close", "취소", () => { this.act = null; }))];
+    if (a.step === "running") return [box.child(div().text_color(t.dim).child("지우는 중…"))];
     return [box.child(div().flex_1().min_w(0).text_color(t.ansi1).child(`⚠ ${a.error}`)).child(button("session-act-close", "닫기", () => { this.act = null; }))];
+  }
+
+  renaming(s) {
+    const a = this.act;
+    return a?.id === s.id && (a.step === "rename" || (a.step === "running" && a.kind === "rename"));
+  }
+
+  // The row's title, or, while renaming, the name field in its place (Enter or ✓ saves, Esc or ✕ cancels).
+  titleCell(s, t) {
+    const a = this.act;
+    if (!this.renaming(s)) return div().flex_1().min_w(0).truncate().child(s.title);
+    if (a.step === "running") return div().flex_1().min_w(0).truncate().text_color(t.dim).child(`${this.nameInput.value().trim()} …`);
+    const stop = (_e, cx) => cx.stop_propagation();
+    const icon = (id, label, onClick) => div().id(id).w(20).h(20).flex_none().flex().items_center().justify_center().rounded(5)
+      .cursor_pointer().text_color(t.muted).hover(st => st.bg(t.selected).text_color(t.foreground))
+      .on_mouse_down("left", stop).on_click((_e, cx) => { cx.stop_propagation(); onClick(cx); cx.notify(); }).child(label);
+    return h_flex().id(`session-name-${s.id}`).flex_1().min_w(0).gap(4).items_center()
+      .on_mouse_down("left", stop).on_click(stop)
+      .on_key_down((e, cx) => { if (e.key === "escape") { cx.stop_propagation(); this.act = null; cx.notify(); } })
+      .child(Input.new(this.nameInput).flex_1().min_w(0).h(24).text_size(13))
+      .child(icon(`session-name-ok-${s.id}`, "✓", cx => this.runAct("rename", cx)))
+      .child(icon(`session-name-cancel-${s.id}`, "✕", () => { this.act = null; }));
   }
 
   render(cx) {
@@ -187,16 +211,16 @@ export default class Sessions extends View {
         .children(picked.items.flatMap(s => {
           const live = d.live.has(s.id.toLowerCase());
           return [v_flex().id(`session-${s.id}`).flex_none().px(8).py(6).gap(3).rounded(7).cursor_pointer().hover(st => st.bg(t.hover))
-            .on_click(e => { if (e.click_count === 1) this.open(s); })
+            .on_click(e => { if (e.click_count === 1 && !this.renaming(s)) this.open(s); })
             .child(h_flex().min_w(0).gap(6).items_center()
               .when(live, el => el.child(div().flex_none().w(8).h(8).rounded(4).bg(t.ansi2)))
-              .child(div().flex_1().min_w(0).truncate().child(s.title))
+              .child(this.titleCell(s, t))
               // ⋯: its press and click stop here, so the row doesn't open the session.
-              .child(div().id(`session-more-${s.id}`).w(20).h(20).flex_none().flex().items_center().justify_center().rounded(5)
+              .when(!this.renaming(s), el => el.child(div().id(`session-more-${s.id}`).w(20).h(20).flex_none().flex().items_center().justify_center().rounded(5)
                 .text_color(t.dim).hover(st => st.bg(t.selected).text_color(t.foreground))
                 .on_mouse_down("left", (_e, cx) => cx.stop_propagation())
                 .on_click((_e, cx) => { cx.stop_propagation(); this.toggleMenu(s); cx.notify(); })
-                .child("⋯")))
+                .child("⋯"))))
             .child(div().min_w(0).truncate().text_size(11).text_color(t.dim).child(sessionMeta(s, d.root, now))),
           ...this.actBox(s, live, t, button)];
         }))
