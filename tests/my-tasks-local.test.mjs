@@ -111,3 +111,30 @@ test("remove takes the task's subtasks with it", async () => {
   assert.deepEqual(await titles(env, L), ["Q"]);
   await assert.rejects(LO.remove(env, L, p.id), kind("api"));
 });
+
+test("a read error is a local error and writes nothing", async () => {
+  const env = memEnv();
+  env.readFile = () => { throw Object.assign(new Error("busy"), { code: "EBUSY" }); };
+  await assert.rejects(LO.lists(env), e => e?.kind === "local" && e.message === "로컬 저장 파일을 읽지 못했어요: /l.json");
+  await assert.rejects(LO.add(env, "a", "t"), kind("local"));
+  assert.equal(env.writes, 0);
+});
+
+const seed = (tasks) => JSON.stringify({ lists: [{ id: "L", title: "x" }], tasks: { L: tasks } });
+const T = (id, parent = null) => ({ id, title: id, notes: null, due: null, status: "needsAction", completed: null, parent });
+const parents = async (env) => Object.fromEntries((await LO.tasks(env, "L")).map(t => [t.id, t.parent]));
+
+test("move carries subtasks along; new subtasks go first under their parent", async () => {
+  const env = memEnv(seed([T("P"), T("c1", "P"), T("c2", "P"), T("Q")]));
+  await LO.move(env, "L", "P", { previous: "Q" });
+  assert.deepEqual(await titles(env, "L"), ["Q", "P", "c1", "c2"]);
+  assert.deepEqual(await parents(env), { Q: null, P: null, c1: "P", c2: "P" });
+  await LO.add(env, "L", "c0", "P");
+  assert.deepEqual(await titles(env, "L"), ["Q", "P", "c0", "c1", "c2"]);
+});
+
+test("move after a parent that has children lands after its last child", async () => {
+  const env = memEnv(seed([T("A"), T("P"), T("c1", "P"), T("c2", "P")]));
+  await LO.move(env, "L", "A", { previous: "P" });
+  assert.deepEqual(await titles(env, "L"), ["P", "c1", "c2", "A"]);
+});

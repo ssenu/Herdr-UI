@@ -49,12 +49,12 @@ export function parseCommand(argv) {
 export function makeEnv(dir = join(dirname(fileURLToPath(import.meta.url)), "..", "..", "my-tasks")) {
   return {
     fetch: (...a) => globalThis.fetch(...a),
-    readFile: p => { try { return readFileSync(p, "utf8"); } catch { return null; } },
+    readFile: p => { try { return readFileSync(p, "utf8"); } catch (e) { if (e?.code === "ENOENT") return null; throw e; } },
     // Atomic: write a temp file, then rename over the target. On Windows the mode is ignored and the
     // file relies on the permissions of the user-profile folder.
     writeFile: (p, s) => {
       mkdirSync(dirname(p), { recursive: true });
-      const tmp = `${p}.tmp`;
+      const tmp = `${p}.${process.pid}.${Date.now()}.${randomBytes(3).toString("hex")}.tmp`;
       writeFileSync(tmp, s, { mode: 0o600 });
       renameSync(tmp, p);
     },

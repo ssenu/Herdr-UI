@@ -72,6 +72,8 @@ test("makeEnv().writeFile writes atomically and leaves no .tmp file", async () =
     env.writeFile(env.tokenPath, "x");
     assert.equal(env.readFile(env.tokenPath), "x");
     assert.deepEqual(fs.readdirSync(dir), ["token.json"]);
+    assert.equal(fs.readdirSync(dir).filter(f => f.endsWith(".tmp")).length, 0);
+    assert.equal(env.readFile(path.join(dir, "missing.json")), null);
   } finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });
 

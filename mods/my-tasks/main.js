@@ -88,7 +88,7 @@ export default class Tasks extends View {
   switchMode(mode, cx) {
     this.menuOpen = false;
     this.waiting = null;
-    this.enqueue({ refresh: "all", run: async () => { this.setMode(mode); return { ok: true }; } }, cx);
+    this.enqueue({ refresh: "all", switch: true, run: async () => { this.setMode(mode); return { ok: true }; } }, cx);
   }
 
   // Runs the helper with this mode's backend (or the one given). Never throws: { ok: true, data } or { ok: false, error }.
@@ -147,7 +147,7 @@ export default class Tasks extends View {
   fail(error, job) {
     const e = errorText(error);
     if (e.screen === "login") {
-      this.screen = "login"; this.loginInfo = e; this.queue = []; this.error = null;
+      this.screen = "login"; this.loginInfo = e; this.queue = this.queue.filter(j => j.switch); this.error = null;
       return;
     }
     this.error = { text: e.text, job };
@@ -158,6 +158,7 @@ export default class Tasks extends View {
     if (!this.mode) {
       // First run: Google if this PC is already signed in, otherwise local.
       const s = await this.call(command("status"), undefined, "google");
+      if (!s.ok && !["no-client", "no-login", "expired"].includes(s.error?.kind)) return s.error;
       this.setMode(s.ok ? "google" : "local");
     }
     const l = await this.call(command("lists"));

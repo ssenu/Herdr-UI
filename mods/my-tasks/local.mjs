@@ -15,7 +15,9 @@ function valid(data) {
 const save = (env, data) => env.writeFile(env.localPath, JSON.stringify(data));
 
 function load(env) {
-  const raw = env.readFile(env.localPath);
+  let raw;
+  try { raw = env.readFile(env.localPath); }
+  catch { throw new TasksError("local", `로컬 저장 파일을 읽지 못했어요: ${env.localPath}`); }
   if (raw == null) {
     const id = env.newId();
     const data = { lists: [{ id, title: DEFAULT_LIST }], tasks: { [id]: [] } };
@@ -131,15 +133,24 @@ export async function remove(env, list, id) {
 }
 
 // Like Google's tasks.move: right after `previous`; else first under `parent`; else first in the list.
+// The task moves with its subtasks as one block.
 export async function move(env, list, id, { parent, previous } = {}) {
   return change(env, data => {
     const arr = listTasks(data, list);
     if (parent) indexOf(arr, parent);
     if (previous) indexOf(arr, previous);
-    const [task] = arr.splice(indexOf(arr, id), 1);
+    indexOf(arr, id);
+    const block = arr.filter(t => t.id === id || t.parent === id);
+    const rest = arr.filter(t => !block.includes(t));
+    const task = block[0];
     task.parent = parent || null;
-    const at = previous ? indexOf(arr, previous) + 1 : parent ? indexOf(arr, parent) + 1 : 0;
-    arr.splice(at, 0, task);
+    let at = 0;
+    if (previous) {
+      at = rest.findIndex(t => t.id === previous) + 1;
+      while (at < rest.length && rest[at].parent === previous) at++;
+    } else if (parent) at = rest.findIndex(t => t.id === parent) + 1;
+    rest.splice(at, 0, ...block);
+    data.tasks[list] = rest;
     return out(task, at);
   });
 }
