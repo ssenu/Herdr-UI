@@ -7,6 +7,7 @@ import { props, spaces, exec, readTextFile, writeTextFile, watchFolder, theme, s
 import { mkdir, writeFile, unlink, readFile, exists } from "fs/promises";
 import { editability, previewText, sameText, isSaveKey, restoreEol, syncDecision, saveFailure, REASONS, absolutePath, searchPaths, splitPath, segments, indexCommand, indexLines } from "./files-logic.js";
 import { viewKind, textHash, draftName, pickDraft, watchMatters, restoreState, dirtyName, baseName, parentDir, findTab, tabInfo, keepLive } from "./logic.js";
+import { chip, button, errorLine, note, HEADER_H, TOOLBAR_H } from "./ui.js";
 import { OPEN_KEY, OWN_KEY, openKey, openCommands } from "./viewer-open.js";
 
 const LANG = { ts: "js", tsx: "js", mts: "js", cts: "js", jsx: "js", mjs: "js", toml: "yaml", jsonc: "json", svelte: "html", vue: "html" };
@@ -373,11 +374,11 @@ export default class Viewer extends View {
 
   pickerView(t, cx) {
     const index = this.index, found = this.results(), q = this.query.trim();
-    const note = text => div().p(8).text_size(12).text_color(t.dim).child(text);
     if (found && this.at >= found.results.length) this.at = Math.max(0, found.results.length - 1);
     return v_flex().flex_1().min_h(0)
-      .child(h_flex().h(40).flex_none().px(14).gap(8).items_center().border_b(1).border_color(t.border)
+      .child(h_flex().h(TOOLBAR_H).flex_none().px(14).gap(8).items_center().border_b(1).border_color(t.border)
         .on_key_down((e, cx) => {
+          if (e.key === "escape" && this.query) { this.query = ""; this.at = 0; this.search.set_value(""); cx.stop_propagation(); cx.notify(); return; }
           const n = this.results()?.results.length ?? 0;
           if (e.key === "down" && n) this.at = Math.min(this.at + 1, n - 1);
           else if (e.key === "up" && n) this.at = Math.max(this.at - 1, 0);
@@ -388,55 +389,49 @@ export default class Viewer extends View {
         .child(svg("mods/my-files/search.svg").size(14).flex_none().text_color(t.dim))
         .child(Input.new(this.search).flex_1().h_full().text_size(13).text_color(t.foreground))
         .when(Boolean(index?.building), el => el.child(div().flex_none().text_size(11).text_color(t.dim).child("목록 만드는 중…"))))
+      .when(Boolean(index?.error), el => el.child(errorLine(t, "viewer-index-error", `파일 목록을 만들지 못했어요: ${index.error}`, { retry: cx => { this.index = null; this.ensureIndex(cx); } })))
       .child(v_flex().id("viewer-found").flex_1().min_h(0).overflow_y_scrollbar().p(6)
-        .when(!this.root, el => el.child(note("폴더가 없어요")))
-        .when(Boolean(this.root) && !q, el => el.child(note(`${baseName(this.root)} 아래에서 파일 이름을 찾아요`)))
-        .when(Boolean(index?.error), el => el.child(div().p(8).text_size(12).text_color(t.ansi1).child(`파일 목록을 만들지 못했어요: ${index.error}`)))
-        .when(Boolean(index?.truncated), el => el.child(note("파일이 너무 많아 처음 50,000개에서만 찾아요")))
+        .when(!this.root, el => el.child(note(t, "폴더가 없어요")))
+        .when(Boolean(this.root) && !q, el => el.child(note(t, `${baseName(this.root)} 아래에서 파일 이름을 찾아요`)))
+        .when(Boolean(index?.truncated), el => el.child(note(t, "파일이 너무 많아 처음 50,000개에서만 찾아요")))
         .children(found ? found.results.map((r, i) => this.resultRow(r, i, t, cx)) : [])
-        .when(Boolean(found?.more), el => el.child(note("더 있어요 · 검색어를 더 입력하세요")))
-        .when(Boolean(found) && found.results.length === 0, el => el.child(note(`‘${q}’와 맞는 파일이 없어요`))));
+        .when(Boolean(found?.more), el => el.child(note(t, "더 있어요 · 검색어를 더 입력하세요")))
+        .when(Boolean(found) && found.results.length === 0, el => el.child(note(t, `‘${q}’와 맞는 파일이 없어요`))));
   }
 
   render(cx) {
     const t = theme(), buf = this.buf, path = this.path;
-    const button = (id, label, onClick) => h_flex().id(id).h(24).px(8).flex_none().items_center().rounded(6).cursor_pointer()
-      .text_size(12).text_color(t.foreground).border_1().border_color(t.border).hover(s => s.bg(t.hover))
-      .on_click((_e, cx) => { onClick(cx); cx.notify(); }).child(label);
-    const chip = (id, label, on, onClick) => h_flex().id(id).h(24).px(9).flex_none().items_center().rounded(6).cursor_pointer().text_size(12)
-      .bg(on ? t.selected : t.background).text_color(on ? t.foreground : t.muted)
-      .hover(s => s.bg(t.hover)).on_click((_e, cx) => { onClick(cx); cx.notify(); }).child(label);
     const bar = () => h_flex().h(34).flex_none().px(14).gap(8).items_center().border_b(1).border_color(t.border).text_size(12);
     const root = v_flex().id("viewer").size_full().min_h(0).overflow_hidden().bg(t.background).text_color(t.foreground).text_size(13);
     if (!path) return root.child(this.pickerView(t, cx));
     const message = text => v_flex().flex_1().items_center().justify_center().gap(10).text_color(t.dim).child(div().child(text));
     return root
-      .child(h_flex().h(36).flex_none().px(14).gap(8).items_center().border_b(1).border_color(t.border)
+      .child(h_flex().h(HEADER_H).flex_none().px(14).gap(8).items_center().border_b(1).border_color(t.border)
         .child(div().flex_1().min_w(0).truncate().text_size(12).text_color(t.dim).child(`${this.on ? `${this.on}:` : ""}${path}`))
         .when(Boolean(buf?.dirty), el => el.child(div().flex_none().text_size(11).text_color(t.accent).child("● 저장 안 됨")))
         .when(Boolean(buf) && viewKind(path, null) === "markdown", el => el
-          .child(chip("viewer-preview", "보기", buf.view === "preview", () => { buf.view = "preview"; }))
-          .child(chip("viewer-edit", "편집", buf.view === "edit", () => { buf.view = "edit"; }))))
+          .child(chip(t, "viewer-preview", "보기", buf.view === "preview", () => { buf.view = "preview"; }))
+          .child(chip(t, "viewer-edit", "편집", buf.view === "edit", () => { buf.view = "edit"; }))))
       .when(Boolean(buf && !buf.editable), el => el.child(bar().text_color(t.dim)
         .child(div().flex_1().min_w(0).truncate().child(REASONS[buf.reason] ?? "읽기 전용"))
         .child(this.on
-          ? button("viewer-nano", "nano로 열기", () => this.openInNano())
-          : button("viewer-external-ro", "외부 프로그램으로 열기", () => this.openExternal()))))
+          ? button(t, "viewer-nano", "nano로 열기", () => this.openInNano())
+          : button(t, "viewer-external-ro", "외부 프로그램으로 열기", () => this.openExternal()))))
       .when(buf?.conflict === "disk", el => el.child(bar()
         .child(div().flex_1().min_w(0).truncate().text_color(t.blocked).child("디스크의 파일이 바뀌었어요"))
-        .child(button("viewer-overwrite", "내 것으로 덮어쓰기", cx => this.overwrite(cx)))
-        .child(button("viewer-load", "디스크 버전 불러오기", cx => this.loadDisk(cx)))))
+        .child(button(t, "viewer-overwrite", "내 것으로 덮어쓰기", cx => this.overwrite(cx)))
+        .child(button(t, "viewer-load", "디스크 버전 불러오기", cx => this.loadDisk(cx)))))
       .when(buf?.conflict === "draft", el => el.child(bar()
         .child(div().flex_1().min_w(0).truncate().text_color(t.blocked).child(buf.base === null ? "파일이 지워졌어요 · 저장 안 한 초안이 있어요" : "디스크의 파일이 바뀌었어요 · 저장 안 한 초안이 있어요"))
-        .child(button("viewer-keep", "초안 유지", cx => this.keepDraft(cx)))
-        .child(button("viewer-load-draft", buf.base === null ? "초안 버리기" : "디스크 버전 불러오기", cx => this.loadDisk(cx)))))
+        .child(button(t, "viewer-keep", "초안 유지", cx => this.keepDraft(cx)))
+        .child(button(t, "viewer-load-draft", buf.base === null ? "초안 버리기" : "디스크 버전 불러오기", cx => this.loadDisk(cx)))))
       .child(this.binary
         ? message(`${baseName(path)} · 여기서 표시할 수 없는 파일이에요`)
-          .when(!this.on, el => el.child(button("viewer-external", "외부 프로그램으로 열기", () => this.openExternal())))
+          .when(!this.on, el => el.child(button(t, "viewer-external", "외부 프로그램으로 열기", () => this.openExternal())))
         : this.error
-          ? message(this.error).child(button("viewer-retry", "다시 읽기", cx => this.load(cx)))
-            .when(!this.on, el => el.child(button("viewer-external", "외부 프로그램으로 열기", () => this.openExternal())))
-            .when(Boolean(this.on), el => el.child(button("viewer-nano-error", "nano로 열기", () => this.openInNano())))
+          ? message(this.error).child(button(t, "viewer-retry", "다시 읽기", cx => this.load(cx)))
+            .when(!this.on, el => el.child(button(t, "viewer-external", "외부 프로그램으로 열기", () => this.openExternal())))
+            .when(Boolean(this.on), el => el.child(button(t, "viewer-nano-error", "nano로 열기", () => this.openInNano())))
           : !buf
             ? message("불러오는 중…")
             : buf.view === "preview"

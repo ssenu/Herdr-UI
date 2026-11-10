@@ -37,7 +37,7 @@ export default class MyFilesOpen extends View {
 
   render() {
     const t = theme();
-    return v_flex().id("my-files-open").track_focus(this.handle).w_full().min_h(0).p(5).bg(t.popover).text_size(12.8)
+    return v_flex().id("my-files-open").track_focus(this.handle).w_full().min_h(0).p(5).bg(t.popover).text_size(13)
       .on_key_down((e, cx) => {
         if (e.key === "down") this.at = (this.at + 1) % ITEMS.length;
         else if (e.key === "up") this.at = (this.at + ITEMS.length - 1) % ITEMS.length;
