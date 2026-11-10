@@ -3,6 +3,7 @@
 // which prints one JSON line. Jobs run one at a time, in order.
 import { View, div } from "gpui-kit";
 import { v_flex, h_flex, InputState, Input, TextareaState, Textarea } from "gpui-base";
+import { panel, header, toolbar, chip, button, iconButton, errorLine, note, confirmBox, menu, onEscape } from "./ui.js";
 import { exec, theme, layout, appHome } from "herdr";
 import {
   REFRESH_MS, LOGIN_TIMEOUT_MS, helperPath, command, parseOutput, execError, buildTree, moveArgs, canMove,
@@ -383,25 +384,17 @@ export default class Tasks extends View {
     }, cx);
   }
 
-  // Mode chips on the right, like Plugins' Claude / Codex.
+  // Mode chips on the right, like Plugins Claude / Codex.
   header(t) {
-    const chip = (id, label, mode) => {
-      const on = this.mode === mode;
-      return h_flex().id(id).h(24).px(9).flex_none().items_center().rounded(6).cursor_pointer().text_size(12)
-        .bg(on ? t.selected : t.background).text_color(on ? t.foreground : t.muted)
-        .hover(s => s.bg(t.hover)).on_click((_e, cx) => { if (!on) this.switchMode(mode, cx); cx.notify(); }).child(label);
-    };
-    return h_flex().h(42).flex_none().px(14).gap(6).items_center().border_b(1).border_color(t.border)
-      .child(div().font_semibold().child("Task"))
-      .child(div().flex_1().min_w(0).truncate().text_right().text_size(12).text_color(t.dim)
-        .child(this.running || this.queue.length ? "동기화 중…" : ""))
-      .child(chip("tasks-mode-local", "로컬", "local"))
-      .child(chip("tasks-mode-google", "Google", "google"))
-      .child(div().id("tasks-refresh").w(20).cursor_pointer().text_color(t.muted)
-        .on_click((_e, cx) => { this.error = null; if (!this.waiting) this.requestRefresh(cx); cx.notify(); }).child("⟳"));
+    const modeChip = (id, label, mode) => chip(t, id, label, this.mode === mode, cx => this.switchMode(mode, cx));
+    return header(t, {
+      id: "tasks", title: "Tasks", status: this.running || this.queue.length ? "동기화 중…" : "",
+      right: [modeChip("tasks-mode-local", "로컬", "local"), modeChip("tasks-mode-google", "Google", "google")],
+      refresh: cx => { this.error = null; if (!this.waiting) this.requestRefresh(cx); },
+    });
   }
 
-  loginView(t, button) {
+  loginView(t) {
     const info = this.loginInfo, noClient = info.kind === "no-client";
     return v_flex().flex_1().min_h(0).p(16).gap(10)
       .child(div().font_semibold().child(info.text))
@@ -410,69 +403,72 @@ export default class Tasks extends View {
       .child(div().text_size(12).text_color(t.dim).child("자세한 방법은 README의 Task 패널 절을 보세요."))
       .child(h_flex().gap(8).items_center()
         .children(this.waiting
-          ? [div().text_size(12).child("브라우저에서 허용해 주세요…"), button("tasks-login-cancel", "취소", () => { this.waiting = null; })]
-          : [noClient ? button("tasks-recheck", "다시 확인", cx => this.requestRefresh(cx)) : button("tasks-login", "로그인", cx => this.login(cx))])
-        .child(button("tasks-to-local", "로컬로 돌아가기", cx => this.switchMode("local", cx))));
+          ? [div().text_size(12).child("브라우저에서 허용해 주세요…"), button(t, "tasks-login-cancel", "취소", () => { this.waiting = null; })]
+          : [noClient ? button(t, "tasks-recheck", "다시 확인", cx => this.requestRefresh(cx)) : button(t, "tasks-login", "로그인", cx => this.login(cx))])
+        .child(button(t, "tasks-to-local", "로컬로 돌아가기", cx => this.switchMode("local", cx))));
   }
 
-  listView(t, button, icon) {
+  listView(t) {
     const current = this.lists.find(l => l.id === this.listId);
     const out = [
-      h_flex().h(38).flex_none().px(10).gap(6).items_center().border_b(1).border_color(t.border)
+      toolbar(t).gap(6)
         .child(h_flex().id("tasks-pick").h(24).px(8).flex_1().min_w(0).gap(6).items_center().rounded(6).cursor_pointer().text_size(12)
           .border_1().border_color(t.border).hover(s => s.bg(t.hover))
           .on_click((_e, cx) => { this.pickOpen = !this.pickOpen; this.menuOpen = false; cx.notify(); })
           .child(div().flex_1().min_w(0).truncate().child(current?.title ?? "목록 없음"))
           .child(div().flex_none().text_color(t.muted).child("▾")))
-        .child(button("tasks-list-new", "+", () => this.startNaming("new")))
-        .child(button("tasks-menu", "⋯", () => { this.menuOpen = !this.menuOpen; this.pickOpen = false; })),
+        .child(iconButton(t, "tasks-list-new", "+", () => this.startNaming("new")))
+        .child(iconButton(t, "tasks-menu", "⋯", () => { this.menuOpen = !this.menuOpen; this.pickOpen = false; })),
     ];
     if (this.pickOpen) out.push(v_flex().flex_none().p(6).gap(1).border_b(1).border_color(t.border)
       .children(this.lists.map(l => h_flex().id(`tasks-pick-${l.id}`).h(26).px(8).items_center().rounded(6).cursor_pointer().text_size(12)
         .bg(l.id === this.listId ? t.selected : t.background).hover(s => s.bg(t.hover))
         .on_click((_e, cx) => { this.chooseList(l.id, cx); cx.notify(); })
         .child(div().flex_1().min_w(0).truncate().child(l.title)))));
-    if (this.menuOpen) out.push(h_flex().flex_none().px(10).py(6).gap(6).flex_wrap().border_b(1).border_color(t.border)
-      .when(Boolean(current), el => el
-        .child(button("tasks-list-rename", "목록 이름 바꾸기", () => this.startNaming("rename")))
-        .when(this.loadedList === this.listId, el => el.child(button("tasks-list-delete", "목록 삭제", () => this.askDeleteList()))))
-      .when(this.mode === "google", el => el.child(button("tasks-logout", "로그아웃", cx => this.logout(cx)))));
-    if (this.naming) out.push(h_flex().h(38).flex_none().px(10).gap(6).items_center().border_b(1).border_color(t.border)
+    if (this.menuOpen) {
+      const items = [];
+      if (current) {
+        items.push({ id: "tasks-list-rename", label: "목록 이름 바꾸기", onClick: () => this.startNaming("rename") });
+        if (this.loadedList === this.listId) items.push({ id: "tasks-list-delete", label: "목록 삭제", danger: true, onClick: () => this.askDeleteList() });
+      }
+      if (this.mode === "google") items.push({ id: "tasks-logout", label: "로그아웃", onClick: cx => this.logout(cx) });
+      if (items.length) out.push(h_flex().flex_none().justify_end().px(10).py(6).border_b(1).border_color(t.border).child(menu(t, "tasks-list-menu", items)));
+    }
+    if (this.naming) out.push(toolbar(t).gap(6)
+      .on_key_down(onEscape(() => { this.naming = null; }))
       .child(div().flex_none().text_size(12).text_color(t.dim).child(this.naming.mode === "new" ? "새 목록" : "이름"))
-      .child(Input.new(this.nameInput).flex_1().h(26).text_size(12.5))
-      .child(button("tasks-name-ok", "확인", cx => this.submitName(cx)))
-      .child(button("tasks-name-cancel", "취소", () => { this.naming = null; })));
-    if (this.confirm?.kind === "list") out.push(h_flex().flex_none().px(10).py(6).gap(6).items_center().flex_wrap().border_b(1).border_color(t.border).text_size(12)
-      .child(div().child(this.confirm.text))
-      .child(button("tasks-list-delete-ok", "삭제", cx => this.deleteList(cx)))
-      .child(button("tasks-list-delete-cancel", "취소", () => { this.confirm = null; })));
-    if (this.error) out.push(h_flex().flex_none().px(10).py(6).gap(6).items_center().flex_wrap().border_b(1).border_color(t.border).text_size(12)
-      .child(div().flex_1().min_w(0).text_color(t.ansi1).child(`⚠ ${this.error.text}`))
-      .when(Boolean(this.error.job), el => el.child(button("tasks-retry", "다시 시도", cx => {
+      .child(Input.new(this.nameInput).flex_1().h(26).text_size(13))
+      .child(button(t, "tasks-name-ok", "확인", cx => this.submitName(cx)))
+      .child(button(t, "tasks-name-cancel", "취소", () => { this.naming = null; })));
+    if (this.confirm?.kind === "list") out.push(confirmBox(t, "tasks-list-delete-box", this.confirm.text,
+      { confirm: "삭제", onConfirm: cx => this.deleteList(cx), onCancel: () => { this.confirm = null; } }).mx(10).my(6));
+    if (this.error) out.push(errorLine(t, "tasks-error", this.error.text, {
+      retry: this.error.job ? cx => {
         const job = this.error?.job;
         this.error = null;
         if (job) this.enqueue(job, cx);
-      })))
-      .child(button("tasks-error-close", "닫기", () => { this.error = null; })));
-    out.push(this.body(t, button, icon));
+      } : null,
+      close: () => { this.error = null; },
+    }));
+    out.push(this.body(t));
     return out;
   }
 
-  body(t, button, icon) {
+  body(t) {
     const list = v_flex().id("tasks-list").flex_1().min_h(0).overflow_y_scrollbar().p(6).gap(1);
-    const note = text => div().p(8).text_size(12).text_color(t.dim).child(text);
-    if (this.screen === "loading") return list.child(note("불러오는 중…"));
-    if (!this.listId) return list.child(note("목록이 없어요. [+]로 만들어 보세요."));
+    if (this.screen === "loading") return list.child(note(t, "불러오는 중…"));
+    if (!this.listId) return list.child(note(t, "목록이 없어요. [+]로 만들어 보세요."));
     const { roots, done } = this.tree;
-    const rows = roots.flatMap(r => [this.row(r, 0, t, button, icon), ...r.children.map(c => this.row(c, 1, t, button, icon))]);
+    const rows = roots.flatMap(r => [this.row(r, 0, t), ...r.children.map(c => this.row(c, 1, t))]);
     const empty = roots.length || this.adding ? [] : [note(done.length ? "남은 할 일이 없어요." : "할 일이 없어요.")];
     const add = this.adding
       ? v_flex().id("tasks-add-form").flex_none().mt(4).px(8).py(6).gap(6).rounded(7).bg(t.hover)
-        .child(Input.new(this.addInput).w_full().h(26).text_size(12.5))
+        .on_key_down(onEscape(() => this.closeAdd()))
+        .child(Input.new(this.addInput).w_full().h(26).text_size(13))
         .child(Textarea.new(this.addNotes).w_full().text_size(12))
         .child(h_flex().gap(6)
-          .child(button("tasks-add-ok", "추가", cx => this.addTask(cx)))
-          .child(button("tasks-add-close", "닫기", () => this.closeAdd())))
+          .child(button(t, "tasks-add-ok", "추가", cx => this.addTask(cx)))
+          .child(button(t, "tasks-add-cancel", "취소", () => this.closeAdd())))
       : h_flex().id("tasks-add").h(28).px(8).mt(4).gap(8).items_center().rounded(6).cursor_pointer().text_size(12).text_color(t.muted)
         .hover(s => s.bg(t.hover)).on_click((_e, cx) => { this.openAdd(); cx.notify(); })
         .child(div().w(16).flex_none().child("+")).child("할 일 추가");
@@ -480,35 +476,34 @@ export default class Tasks extends View {
       h_flex().id("tasks-done-toggle").h(28).px(8).mt(6).items_center().rounded(6).cursor_pointer().text_size(12).text_color(t.muted)
         .hover(s => s.bg(t.hover)).on_click((_e, cx) => { this.showDone = !this.showDone; if (!this.showDone) this.dropDoneConfirm(); cx.notify(); })
         .child(`${this.showDone ? "▾" : "▸"} 완료됨 (${done.length})`),
-      ...(this.showDone ? done.map(d => this.row(d, 0, t, button, icon)) : []),
+      ...(this.showDone ? done.map(d => this.row(d, 0, t)) : []),
     ];
     return list.children([...rows, ...empty, add, ...doneRows]);
   }
 
-  row(task, depth, t, button, icon) {
+  row(task, depth, t) {
     const done = task.status === "completed", id = task.id, pad = 8 + depth * 18;
     if (this.confirm?.kind === "task" && this.confirm.id === id) {
-      return h_flex().id(`task-${id}`).flex_none().pl(pad).pr(8).py(6).gap(6).items_center().flex_wrap().rounded(7).bg(t.hover).text_size(12)
-        .child(div().child(this.confirm.text))
-        .child(button("task-delete-ok", "삭제", cx => this.deleteTask(cx)))
-        .child(button("task-delete-cancel", "취소", () => { this.confirm = null; }));
+      return div().id(`task-${id}`).flex_none().pl(depth * 18).child(confirmBox(t, `task-delete-${id}`, this.confirm.text,
+        { confirm: "삭제", onConfirm: cx => this.deleteTask(cx), onCancel: () => { this.confirm = null; } }));
     }
     if (this.edit?.id === id) {
       return v_flex().id(`task-${id}`).flex_none().pl(pad).pr(8).py(6).gap(6).rounded(7).bg(t.hover)
-        .child(Input.new(this.titleInput).w_full().h(26).text_size(12.5))
+        .on_key_down(onEscape(() => { this.edit = null; }))
+        .child(Input.new(this.titleInput).w_full().h(26).text_size(13))
         .child(Textarea.new(this.notesInput).w_full().text_size(12))
         .child(Input.new(this.dueInput).w_full().h(26).text_size(12))
         .when(Boolean(this.edit.error), el => el.child(div().text_size(11).text_color(t.ansi1).child(this.edit.error)))
         .child(h_flex().gap(6)
-          .child(button("task-save", "저장", cx => this.save(cx)))
-          .child(button("task-edit-cancel", "취소", () => { this.edit = null; })));
+          .child(button(t, "task-save", "저장", cx => this.save(cx)))
+          .child(button(t, "task-edit-cancel", "취소", () => { this.edit = null; })));
     }
     const busy = this.busy.has(id), hovered = this.hover === id && !busy;
     const due = done ? null : dueLabel(task.due, todayString()), preview = done ? null : notesPreview(task.notes);
-    const remove = icon(`task-del-${id}`, "🗑", () => this.askDelete(task));
+    const remove = iconButton(t, `task-del-${id}`, "✕", () => this.askDelete(task));
     const tools = !hovered ? [] : done ? [remove]
-      : MOVES.filter(([dir]) => canMove(this.tree, id, dir)).map(([dir, label]) => icon(`task-${dir}-${id}`, label, cx => this.move(task, dir, cx))).concat([remove]);
-    return v_flex().id(`task-${id}`).flex_none().pl(pad).pr(8).py(5).gap(2).rounded(7).hover(s => s.bg(t.hover))
+      : MOVES.filter(([dir]) => canMove(this.tree, id, dir)).map(([dir, label]) => iconButton(t, `task-${dir}-${id}`, label, cx => this.move(task, dir, cx))).concat([remove]);
+    return v_flex().id(`task-${id}`).flex_none().pl(pad).pr(8).py(6).gap(2).rounded(7).hover(s => s.bg(t.hover))
       .on_hover((h, cx) => { if (h) this.hover = id; else if (this.hover === id) this.hover = null; cx.notify(); })
       .child(h_flex().gap(8).items_center().min_w(0)
         .child(div().id(`task-check-${id}`).flex_none().w(16).cursor_pointer().text_color(done ? t.ansi2 : t.muted)
@@ -518,7 +513,7 @@ export default class Tasks extends View {
           .child(task.title || "(제목 없음)"))
         .when(busy, el => el.child(div().flex_none().text_color(t.dim).child("…")))
         .children(tools)
-        .when(!hovered && !busy && Boolean(due), el => el.child(div().flex_none().text_size(11).text_color(due.overdue ? t.ansi1 : t.dim).child(due.text))))
+        .when(Boolean(due), el => el.child(div().flex_none().text_size(11).text_color(due.overdue ? t.ansi1 : t.dim).child(due.text))))
       .when(Boolean(preview), el => el.child(div().id(`task-notes-${id}`).pl(24).text_size(11).text_color(t.dim).truncate().cursor_pointer()
         .on_click((_e, cx) => { this.openEdit(task); cx.notify(); }).child(preview)));
   }
@@ -528,16 +523,9 @@ export default class Tasks extends View {
     if (shown && !this.wasShown && !this.waiting) this.requestRefresh(cx);
     this.wasShown = shown;
     const t = theme();
-    const button = (id, label, onClick) => h_flex().id(id).h(24).px(8).flex_none().items_center().rounded(6).cursor_pointer()
-      .text_size(12).text_color(t.foreground).border_1().border_color(t.border).hover(s => s.bg(t.hover))
-      .on_click((_e, cx) => { onClick(cx); cx.notify(); }).child(label);
-    const icon = (id, label, onClick) => div().id(id).w(18).flex_none().text_center().cursor_pointer().text_size(12)
-      .text_color(t.muted).hover(s => s.text_color(t.foreground))
-      .on_click((_e, cx) => { onClick(cx); cx.notify(); }).child(label);
-    const root = v_flex().id("tasks").size_full().min_h(0).rounded(10).overflow_hidden().bg(t.background).border_1().border_color(t.border)
-      .text_color(t.foreground).text_size(13)
+    const root = panel(t, "tasks")
       .child(this.header(t));
-    if (this.screen === "login") return root.child(this.loginView(t, button));
-    return root.children(this.listView(t, button, icon));
+    if (this.screen === "login") return root.child(this.loginView(t));
+    return root.children(this.listView(t));
   }
 }
