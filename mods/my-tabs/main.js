@@ -202,12 +202,23 @@ export default class Tabs extends View {
         localStorage.setItem("my-tabs.panelsOpen", this.panelsOpen ? "1" : "0");
         cx.notify();
       }))
-      .when(this.panelsOpen && enabled.includes("files"), el => el.child(panelButton("files", "Files", "mods/files/file.svg")))
-      .when(this.panelsOpen && enabled.includes("changes"), el => el.child(panelButton("changes", "Changes", "mods/changes/changes.svg")))
-      .when(this.panelsOpen && enabled.includes("github"), el => el.child(panelButton("github", "GitHub", "mods/my-github/github.svg")))
-      .when(this.panelsOpen && enabled.includes("plugins"), el => el.child(panelButton("plugins", "Plugins", "mods/my-plugins/plugins.svg")))
-      .when(this.panelsOpen && enabled.includes("sessions"), el => el.child(panelButton("sessions", "Sessions", "mods/my-sessions/sessions.svg")))
-      .when(this.panelsOpen && enabled.includes("tasks"), el => el.child(panelButton("tasks", "Tasks", "mods/my-tasks/tasks.svg")))
+      // The panel buttons slide open from the toggle: the clip's width and opacity follow the measured row.
+      .child(h_flex().id("panel-buttons").flex_none().h(26).items_center().overflow_hidden()
+        .w(this.panelsOpen ? this.panelsWidth ?? 0 : 0).opacity(this.panelsOpen ? 1 : 0)
+        .transition("width", { duration: 180, easing: "ease-out" }).transition("opacity", { duration: 150, easing: "ease-out" })
+        .child(h_flex().id("panel-buttons-row").flex_none().gap(3).items_center()
+          .on_size_change((size, cx) => {
+            const width = Math.ceil(size.width);
+            if (width > 0 && width !== this.panelsWidth) { this.panelsWidth = width; cx.notify(); }
+          })
+          .children([
+          enabled.includes("files") && panelButton("files", "Files", "mods/files/file.svg"),
+          enabled.includes("changes") && panelButton("changes", "Changes", "mods/changes/changes.svg"),
+          enabled.includes("github") && panelButton("github", "GitHub", "mods/my-github/github.svg"),
+          enabled.includes("plugins") && panelButton("plugins", "Plugins", "mods/my-plugins/plugins.svg"),
+          enabled.includes("sessions") && panelButton("sessions", "Sessions", "mods/my-sessions/sessions.svg"),
+          enabled.includes("tasks") && panelButton("tasks", "Tasks", "mods/my-tasks/tasks.svg"),
+          ].filter(Boolean))))
       .when(w?.buttons, el => el.child(button("minimize", w.platform === "windows" ? svg("mods/my-tabs/win-min.svg").size(16) : "−", () => run("window.minimize")))
         .child(button("maximize", w.platform === "windows" ? svg(`mods/my-tabs/${w.maximized ? "win-restore" : "win-max"}.svg`).size(16) : "□", () => run("window.maximize")))
         .child(button("close-window", w.platform === "windows" ? svg("mods/my-tabs/win-close.svg").size(16) : svg("mods/pane/close.svg").size(13), () => run("window.close"))));
