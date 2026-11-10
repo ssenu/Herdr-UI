@@ -43,13 +43,15 @@ export default class Tasks extends View {
     this.error = null; // { text, job }
     this.wasShown = false;
 
-    this.addInput = InputState.new({ placeholder: "새 할 일 추가…" });
+    this.adding = false; // the add form under the open tasks
+    this.addInput = InputState.new({ placeholder: "할 일" });
     this.addInput.on("submit", (_e, cx) => { this.addTask(cx); cx.notify(); });
+    this.addNotes = TextareaState.new({ placeholder: "세부정보", rows: 2 });
     this.nameInput = InputState.new({ placeholder: "목록 이름" });
     this.nameInput.on("submit", (_e, cx) => { this.submitName(cx); cx.notify(); });
     this.titleInput = InputState.new({ placeholder: "제목" });
     this.titleInput.on("submit", (_e, cx) => { this.save(cx); cx.notify(); });
-    this.notesInput = TextareaState.new({ placeholder: "메모", rows: 3 });
+    this.notesInput = TextareaState.new({ placeholder: "세부정보", rows: 3 });
     this.dueInput = InputState.new({ placeholder: "마감일 YYYY-MM-DD" });
     this.dueInput.on("submit", (_e, cx) => { this.save(cx); cx.notify(); });
 
@@ -81,6 +83,7 @@ export default class Tasks extends View {
     localStorage.setItem("my-tasks.mode", mode);
     this.lists = []; this.listId = this.savedList(mode); this.loadedList = null; this.setTasks([]);
     this.edit = null; this.confirm = null; this.naming = null; this.pickOpen = false; this.menuOpen = false; this.showDone = false; this.error = null;
+    this.adding = false;
     this.screen = "loading";
   }
 
@@ -188,6 +191,7 @@ export default class Tasks extends View {
     if (id) localStorage.setItem(key, id); else localStorage.removeItem(key);
     this.edit = null; this.confirm = null; this.showDone = false;
     this.loadedList = null;
+    if (this.adding) this.closeAdd();
     this.setTasks([]);
   }
 
@@ -241,11 +245,31 @@ export default class Tasks extends View {
     this.enqueue({ refresh: "tasks" }, cx);
   }
 
+  openAdd() {
+    this.adding = true;
+    this.addInput.set_value(""); this.addNotes.set_value("");
+    this.addInput.focus();
+  }
+
+  closeAdd() {
+    this.adding = false;
+    this.addInput.set_value(""); this.addNotes.set_value("");
+  }
+
+  // Adds the task (then its details, if any) and leaves the form open, empty, for the next one.
   addTask(cx) {
-    const title = this.addInput.value().trim(), list = this.listId;
+    const title = this.addInput.value().trim(), notes = this.addNotes.value().trim(), list = this.listId;
     if (!title || !list) return;
-    this.addInput.set_value("");
-    this.enqueue({ refresh: "tasks", run: () => this.call(command("add", [list, title])) }, cx);
+    this.addInput.set_value(""); this.addNotes.set_value("");
+    this.addInput.focus();
+    this.enqueue({
+      refresh: "tasks",
+      run: async () => {
+        const r = await this.call(command("add", [list, title]));
+        if (!r.ok || !notes) return r;
+        return this.call(command("update", [list, r.data.id, JSON.stringify({ notes })]));
+      },
+    }, cx);
   }
 
   startNaming(mode) {
@@ -359,13 +383,20 @@ export default class Tasks extends View {
     }, cx);
   }
 
+  // Mode chips on the right, like Plugins' Claude / Codex.
   header(t) {
-    return h_flex().h(42).flex_none().px(14).gap(8).items_center().border_b(1).border_color(t.border)
+    const chip = (id, label, mode) => {
+      const on = this.mode === mode;
+      return h_flex().id(id).h(24).px(9).flex_none().items_center().rounded(6).cursor_pointer().text_size(12)
+        .bg(on ? t.selected : t.background).text_color(on ? t.foreground : t.muted)
+        .hover(s => s.bg(t.hover)).on_click((_e, cx) => { if (!on) this.switchMode(mode, cx); cx.notify(); }).child(label);
+    };
+    return h_flex().h(42).flex_none().px(14).gap(6).items_center().border_b(1).border_color(t.border)
       .child(div().font_semibold().child("Task"))
-      .when(Boolean(this.mode), el => el.child(div().flex_none().px(5).rounded(4).border_1().border_color(t.border).text_size(11).text_color(t.dim)
-        .child(this.mode === "google" ? "Google" : "로컬")))
       .child(div().flex_1().min_w(0).truncate().text_right().text_size(12).text_color(t.dim)
         .child(this.running || this.queue.length ? "동기화 중…" : ""))
+      .child(chip("tasks-mode-local", "로컬", "local"))
+      .child(chip("tasks-mode-google", "Google", "google"))
       .child(div().id("tasks-refresh").w(20).cursor_pointer().text_color(t.muted)
         .on_click((_e, cx) => { this.error = null; if (!this.waiting) this.requestRefresh(cx); cx.notify(); }).child("⟳"));
   }
@@ -405,10 +436,7 @@ export default class Tasks extends View {
       .when(Boolean(current), el => el
         .child(button("tasks-list-rename", "목록 이름 바꾸기", () => this.startNaming("rename")))
         .when(this.loadedList === this.listId, el => el.child(button("tasks-list-delete", "목록 삭제", () => this.askDeleteList()))))
-      .when(this.mode === "local", el => el.child(button("tasks-to-google", "Google Tasks 연동", cx => this.switchMode("google", cx))))
-      .when(this.mode === "google", el => el
-        .child(button("tasks-to-local-menu", "로컬로 전환", cx => this.switchMode("local", cx)))
-        .child(button("tasks-logout", "로그아웃", cx => this.logout(cx)))));
+      .when(this.mode === "google", el => el.child(button("tasks-logout", "로그아웃", cx => this.logout(cx)))));
     if (this.naming) out.push(h_flex().h(38).flex_none().px(10).gap(6).items_center().border_b(1).border_color(t.border)
       .child(div().flex_none().text_size(12).text_color(t.dim).child(this.naming.mode === "new" ? "새 목록" : "이름"))
       .child(Input.new(this.nameInput).flex_1().h(26).text_size(12.5))
@@ -418,8 +446,6 @@ export default class Tasks extends View {
       .child(div().child(this.confirm.text))
       .child(button("tasks-list-delete-ok", "삭제", cx => this.deleteList(cx)))
       .child(button("tasks-list-delete-cancel", "취소", () => { this.confirm = null; })));
-    if (this.listId) out.push(h_flex().h(38).flex_none().px(10).items_center().border_b(1).border_color(t.border)
-      .child(Input.new(this.addInput).flex_1().h(26).text_size(12.5)));
     if (this.error) out.push(h_flex().flex_none().px(10).py(6).gap(6).items_center().flex_wrap().border_b(1).border_color(t.border).text_size(12)
       .child(div().flex_1().min_w(0).text_color(t.ansi1).child(`⚠ ${this.error.text}`))
       .when(Boolean(this.error.job), el => el.child(button("tasks-retry", "다시 시도", cx => {
@@ -439,14 +465,24 @@ export default class Tasks extends View {
     if (!this.listId) return list.child(note("목록이 없어요. [+]로 만들어 보세요."));
     const { roots, done } = this.tree;
     const rows = roots.flatMap(r => [this.row(r, 0, t, button, icon), ...r.children.map(c => this.row(c, 1, t, button, icon))]);
-    const empty = roots.length ? [] : [note(done.length ? "남은 할 일이 없어요." : "할 일이 없어요.")];
+    const empty = roots.length || this.adding ? [] : [note(done.length ? "남은 할 일이 없어요." : "할 일이 없어요.")];
+    const add = this.adding
+      ? v_flex().id("tasks-add-form").flex_none().mt(4).px(8).py(6).gap(6).rounded(7).bg(t.hover)
+        .child(Input.new(this.addInput).w_full().h(26).text_size(12.5))
+        .child(Textarea.new(this.addNotes).w_full().text_size(12))
+        .child(h_flex().gap(6)
+          .child(button("tasks-add-ok", "추가", cx => this.addTask(cx)))
+          .child(button("tasks-add-close", "닫기", () => this.closeAdd())))
+      : h_flex().id("tasks-add").h(28).px(8).mt(4).gap(8).items_center().rounded(6).cursor_pointer().text_size(12).text_color(t.muted)
+        .hover(s => s.bg(t.hover)).on_click((_e, cx) => { this.openAdd(); cx.notify(); })
+        .child(div().w(16).flex_none().child("+")).child("할 일 추가");
     const doneRows = !done.length ? [] : [
       h_flex().id("tasks-done-toggle").h(28).px(8).mt(6).items_center().rounded(6).cursor_pointer().text_size(12).text_color(t.muted)
         .hover(s => s.bg(t.hover)).on_click((_e, cx) => { this.showDone = !this.showDone; if (!this.showDone) this.dropDoneConfirm(); cx.notify(); })
         .child(`${this.showDone ? "▾" : "▸"} 완료됨 (${done.length})`),
       ...(this.showDone ? done.map(d => this.row(d, 0, t, button, icon)) : []),
     ];
-    return list.children([...rows, ...empty, ...doneRows]);
+    return list.children([...rows, ...empty, add, ...doneRows]);
   }
 
   row(task, depth, t, button, icon) {
