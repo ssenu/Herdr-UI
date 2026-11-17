@@ -12,6 +12,7 @@
 - **Tasks 패널**: 할 일 목록(이 PC에 저장, 원하면 Google Tasks 연동) 보기·추가·완료·편집·삭제, 하위 할 일과 순서 바꾸기
 - **탭 바**: 패널 버튼(GitHub · Plugins · Sessions · Tasks, 평소엔 접혀 있고 `+` 바로 오른쪽 `<` 로 펼치고 `>` 로 접기), `+` 메뉴의 파일 뷰어, 스페이스별로 기억하는 패널
 - **탭을 끌어 분할하기**: 탭을 화면 가장자리에 놓으면 분할, 옮긴 칸은 탭 바에 칩으로 남음
+- **알림**: Herdr와 mod의 알림을 반투명 유리 카드로. 성공은 왼쪽 색 줄, 기다림은 아이콘, 오류는 옅은 빨강, 안내는 한 줄
 - **하단 바**: 이 PC의 CPU·RAM·GPU와 ccusage 사용량(오늘 · 5시간 구간 · 남은 시간), 마우스를 올리면 작은 대시보드
 
 전부 설치해도 되고, [원하는 기능만 설치](#원하는-기능만-설치하기)할 수도 있습니다.
@@ -30,6 +31,7 @@
 | `my-status` | 기본 하단 바의 복제본. 이 PC의 CPU·RAM·GPU와 ccusage 사용량 표시 |
 | `my-status-dash` | 하단 바 수치에 마우스를 올리면 뜨는 최근 5분 그래프 |
 | `my-usage-dash` | 하단 바 사용량에 마우스를 올리면 뜨는 사용량 대시보드 |
+| `my-toast` | 알림(토스트) 디자인. 반투명 유리 카드, 종류별 모양 |
 | `my-tab-drag` | 탭을 끌어 작업 화면의 가장자리에 놓으면 분할 |
 | `my-tabs` | 기본 탭 바의 복제본. Files · Changes 옆에 GitHub · Plugins · Sessions · Tasks 버튼 추가 |
 
@@ -166,11 +168,12 @@ cd Herdr-UI
 
 설치 스크립트가 하는 일:
 
-1. `mods\` 의 열네 mod를 `~\.config\herdr-app\mods\` 에 복사합니다.
+1. `mods\` 의 열다섯 mod를 `~\.config\herdr-app\mods\` 에 복사합니다.
 2. 레이아웃 `my-layout` 을 고칩니다. 없으면 기본 레이아웃 `main` 을 `my-layout` 으로 복제한 뒤 고칩니다.
    - Files 칸: `files` → `my-files`
    - 탭 바: `tabs` → `my-tabs`
    - 하단 바: `workspace-status` → `my-status`
+   - 알림: 레이아웃 맨 위에 `"toast": "my-toast"`, `colors.popover` 가 없으면 반투명 `#12141999` (팝업·메뉴 배경도 함께 반투명해집니다)
    - 오른쪽 패널(`panel-body`)에 `github` 칸(`my-github`) 추가
    - 오른쪽 패널(`panel-body`)에 `plugins` 칸(`my-plugins`) 추가
    - 오른쪽 패널(`panel-body`)에 `sessions` 칸(`my-sessions`) 추가
@@ -197,10 +200,11 @@ mod와 레이아웃은 저장하면 바로 적용되므로 앱을 다시 켤 필
 | 묶음 | 복사할 `mods/` 폴더 | 레이아웃에서 바꿀 곳 |
 |---|---|---|
 | **하단 바** (시스템 모니터 + 사용량) | `my-status`, `my-status-dash`, `my-usage-dash` | `"mod": "workspace-status"` → `"my-status"` |
+| **알림** | `my-toast` | 레이아웃 맨 위(`root`)에 `"toast": "my-toast"`, 투명하게 보려면 `"colors": { "popover": "#12141999" }` |
 | **Files 패널** (+ 탭 바에 드롭해 여는 파일 뷰어) | `my-files`, `my-files-drag`, `my-files-open`, `my-viewer` | `"mod": "files"` → `"my-files"` |
 | **탭 바와 패널** (GitHub · Plugins · Sessions · Tasks, `+` 파일 뷰어, 탭 끌어 분할) | `my-tabs`, `my-new-menu`, `my-tab-drag`, `my-github`, `my-plugins`, `my-sessions`, `my-tasks`, `my-viewer`, `my-files`, `my-files-drag`, `my-files-open` | `"mod": "tabs"` → `"my-tabs"`, `panel-body` 에 github · plugins · sessions · tasks 칸 추가 |
 
-- **하단 바**는 다른 묶음 없이 혼자 동작합니다.
+- **하단 바**와 **알림**은 다른 묶음 없이 혼자 동작합니다.
 - **Files 패널**만 넣으면 기본 탭 바를 그대로 쓰므로 패널 버튼과 `+` 메뉴의 파일 뷰어는 없습니다. 파일을 탭 바(창 맨 위)에 끌어 놓으면 뷰어 탭이 열립니다.
 - **탭 바와 패널**이 한 묶음인 이유:
   - GitHub · Plugins · Sessions · Tasks 버튼은 `my-tabs` 에 있고, 버튼은 네 패널이 있다고 보고 항상 보입니다.
@@ -211,11 +215,12 @@ mod와 레이아웃은 저장하면 바로 적용되므로 앱을 다시 켤 필
 
 ## 수동 설치
 
-1. `mods/` 안의 열네 폴더를 `~/.config/herdr-app/mods/` 에 복사합니다.
+1. `mods/` 안의 열다섯 폴더를 `~/.config/herdr-app/mods/` 에 복사합니다.
 2. 쓰는 레이아웃(`~/.config/herdr-app/layouts/<이름>.json`, 기본 레이아웃이면 먼저 `herdr-app do layout.clone --name main --as my-layout`)에서:
    - `"mod": "files"` → `"mod": "my-files"`
    - `"mod": "tabs"` → `"mod": "my-tabs"`
    - `"mod": "workspace-status"` → `"mod": "my-status"`
+   - 맨 위 객체에 `"toast": "my-toast"` 추가, `"colors"` 에 `"popover": "#12141999"` 추가
    - `"id": "panel-body"` 의 `children` 끝에 추가:
      ```json
      { "id": "github", "type": "block", "content": { "mod": "my-github" } },
@@ -237,8 +242,8 @@ mod는 덮어씁니다. 레이아웃은 백업한 뒤 빠진 칸만 추가하므
 ## 제거
 
 1. Tasks 패널을 Google 모드로 썼다면 먼저 패널의 [⋯] → 로그아웃으로 연결을 끊습니다(또는 https://myaccount.google.com/permissions 에서 앱 접근을 삭제).
-2. 백업(`layouts\my-layout.json.bak-<시각>`)을 `my-layout.json` 으로 되돌리거나, 위 일곱 가지를 원래대로(`files`, `tabs`, `workspace-status`, github·plugins·sessions·tasks 칸 삭제) 고칩니다.
-3. `~\.config\herdr-app\mods\` 에서 `my-files`, `my-files-drag`, `my-files-open`, `my-github`, `my-new-menu`, `my-plugins`, `my-sessions`, `my-status`, `my-status-dash`, `my-tab-drag`, `my-tabs`, `my-tasks`, `my-usage-dash`, `my-viewer` 폴더를 지웁니다.
+2. 백업(`layouts\my-layout.json.bak-<시각>`)을 `my-layout.json` 으로 되돌리거나, 위 아홉 가지를 원래대로(`files`, `tabs`, `workspace-status`, github·plugins·sessions·tasks 칸 삭제, `toast` 와 `colors.popover` 삭제) 고칩니다.
+3. `~\.config\herdr-app\mods\` 에서 `my-files`, `my-files-drag`, `my-files-open`, `my-github`, `my-new-menu`, `my-plugins`, `my-sessions`, `my-status`, `my-status-dash`, `my-tab-drag`, `my-tabs`, `my-tasks`, `my-toast`, `my-usage-dash`, `my-viewer` 폴더를 지웁니다.
 4. 뷰어 초안까지 지우려면 `~\.config\herdr-app\data\my-viewer\` 를 지웁니다.
 5. Tasks 패널의 로컬 할 일·설정·토큰 폴더 `~\.config\herdr-app\my-tasks\` 를 지웁니다(로컬 할 일을 남기려면 `local.json` 을 먼저 복사해 두세요).
 

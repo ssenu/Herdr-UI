@@ -17,7 +17,7 @@ if (-not (Test-Path $app)) {
 }
 
 # 1. Mods
-$mods = @("my-files", "my-files-drag", "my-files-open", "my-github", "my-new-menu", "my-plugins", "my-sessions", "my-status", "my-status-dash", "my-tab-drag", "my-tabs", "my-tasks", "my-usage-dash", "my-viewer")
+$mods = @("my-files", "my-files-drag", "my-files-open", "my-github", "my-new-menu", "my-plugins", "my-sessions", "my-status", "my-status-dash", "my-tab-drag", "my-tabs", "my-tasks", "my-toast", "my-usage-dash", "my-viewer")
 New-Item -ItemType Directory -Force (Join-Path $app "mods") | Out-Null
 foreach ($m in $mods) {
   $to = Join-Path $app "mods\$m"
@@ -93,6 +93,10 @@ if (-not (@($panelBody.children) | Where-Object { $_.id -eq "tasks" })) {
   $tasks = [pscustomobject]@{ id = "tasks"; type = "block"; content = [pscustomobject]@{ mod = "my-tasks" } }
   $panelBody.children = @($panelBody.children) + $tasks
 }
+# Notifications: my-toast draws them; a translucent popover color lets the glass show (only when unset).
+if ($doc.PSObject.Properties["toast"]) { $doc.toast = "my-toast" } else { $doc | Add-Member -NotePropertyName toast -NotePropertyValue "my-toast" }
+if (-not $doc.PSObject.Properties["colors"]) { $doc | Add-Member -NotePropertyName colors -NotePropertyValue ([pscustomobject]@{}) }
+if (-not $doc.colors.PSObject.Properties["popover"]) { $doc.colors | Add-Member -NotePropertyName popover -NotePropertyValue "#12141999" }
 
 $out = $doc | ConvertTo-Json -Depth 100
 [IO.File]::WriteAllText($file, $out, (New-Object Text.UTF8Encoding $false))
@@ -112,5 +116,5 @@ if (Get-Command herdr-app -ErrorAction SilentlyContinue) {
     else { Write-Host "레이아웃을 '$Layout' 으로 바꾸지 못했어요. Herdr에서 직접 골라 주세요." -ForegroundColor Yellow }
   }
 }
-Write-Host "완료. 탭 바에 Files · Changes · GitHub · Plugin · Session · Task 버튼이 보이면 성공이에요."
+Write-Host "완료. 탭 바에 Files · Changes · GitHub · Plugins · Sessions · Tasks 버튼이 보이면 성공이에요."
 exit 0
