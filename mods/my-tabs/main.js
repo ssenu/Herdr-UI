@@ -208,7 +208,8 @@ export default class Tabs extends View {
         .transition("width", { duration: 180, easing: "ease-out" }).transition("opacity", { duration: 150, easing: "ease-out" })
         .child(h_flex().id("panel-buttons-row").flex_none().gap(3).items_center()
           .on_size_change((size, cx) => {
-            const width = Math.ceil(size.width);
+            // Sizes come back in zoomed pixels while w() takes unzoomed ones (Settings → UI size).
+            const width = Math.ceil(size.width / (settings().zoom || 1));
             if (width > 0 && width !== this.panelsWidth) { this.panelsWidth = width; cx.notify(); }
           })
           .children([
